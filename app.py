@@ -1,8 +1,7 @@
-import io
 import pandas as pd
 import plotly.express as px
-import requests
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 # Page Setup
 st.set_page_config(
@@ -28,32 +27,24 @@ if not st.session_state["authenticated"]:
                 st.error("Invalid Username or Password")
     st.stop()
 
-# Data Connection (Direct Fetching for Public Sheets)
-SHEET_ID = "1SjStdhep_n9B-Fu9yYjI8DB_ncSiRZHkqYbLyRg5evQ"
+# Data Connection
+conn = st.connection("gsheets", type=GSheetsConnection)
 
 
 @st.cache_data(ttl=5)
-def read_worksheet(sheet_name: str) -> pd.DataFrame:
-    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    response = requests.get(url, headers=headers)
-
-    if response.status_code != 200:
-        raise Exception(
-            f"HTTP Error {response.status_code}. Verify sheet sharing is set to 'Anyone with the link'."
-        )
-
-    return pd.read_csv(io.StringIO(response.text))
-
-
 def load_data():
-    return (
-        read_worksheet("Projects"),
-        read_worksheet("Milestones_Master"),
-        read_worksheet("Tasks"),
-    )
+    df_p = conn.read(worksheet="Projects", ttl=5)
+    df_m = conn.read(worksheet="Milestones_Master", ttl=5)
+    df_t = conn.read(worksheet="Tasks", ttl=5)
+
+    # Clean leading/trailing spaces from string columns to fix matching issues
+    for df in [df_p, df_m, df_t]:
+        if df is not None and not df.empty:
+            df.columns = df.columns.str.strip()
+            for col in df.select_dtypes(include="object").columns:
+                df[col] = df[col].astype(str).str.strip()
+
+    return df_p, df_m, df_t
 
 
 try:
@@ -87,7 +78,7 @@ if mode == "📊 Executive Summary":
     completed_count = 0
     if "Status" in df_tasks.columns:
         completed_count = len(
-            df_tasks[df_tasks["Status"].astype(str).str.upper() == "COMPLETED"]
+            df_tasks[df_tasks["Status"].str.upper() == "COMPLETED"]
         )
     col3.metric("Completed Tasks", completed_count)
 
@@ -100,7 +91,11 @@ elif mode == "🔍 Project Deep-Dive & Tasks":
     selected_proj = st.selectbox(
         "Select Project", df_projects["Project_Name"].unique()
     )
-    p_tasks = df_tasks[df_tasks["Project_Name"] == selected_proj]
+
+    # Filter tasks using cleaned string matching
+    p_tasks = df_tasks[
+        df_tasks["Project_Name"].str.lower() == str(selected_proj).lower()
+    ]
 
     if not p_tasks.empty:
         st.dataframe(p_tasks, use_container_width=True)
@@ -111,14 +106,59 @@ elif mode == "🔍 Project Deep-Dive & Tasks":
 elif mode == "⚙️ Management Portal":
     st.title("⚙️ Management Portal")
     st.subheader("Add New Task")
+
     with st.form("add_task_form"):
-        proj = st.selectbox("Project", df_projects["Project_Name"].unique())
-        stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
+        proj = st.selectbox(
+            "Project", df_projects["Project_Name"].unique()
+        )
+        stage = st.selectbox(
+            "Stage", df_milestones["Stage_Name"].unique()
+        )
         filtered_ms = df_milestones[
             df_milestones["Stage_Name"] == stage
         ]["Milestone_Name"].unique()
         ms = st.selectbox("Milestone", filtered_ms)
         desc = st.text_area("Task Description")
         assigned = st.text_input("Assigned To")
+
         if st.form_submit_button("Submit Task"):
-            st.success("Task submitted!")
+            if not desc or not assigned:
+                st.warning(
+                    "Please fill in both the Task Description and Assigned To fields."
+                )
+            else:
+                try:
+                    # Generate next Task ID (e.g., T004)
+                    next_id = f"T{len(df_tasks) + 1:03d}"
+
+                    new_row = pd.DataFrame(
+                        [
+                            {
+                                "Task_ID": next_id,
+                                "Project_Name": proj,
+                                "Stage_Name": stage,
+                                "Milestone_Name": ms,
+                                "Task_Description": desc,
+                                "Assigned_To": assigned,
+                                "Start_Date": "",
+                                "Due_Date": "",
+                                "Status": "On-going",
+                                "Risks_Issues_Remarks": "",
+                            }
+                        ]
+                    )
+
+                    # Append and update sheet
+                    updated_tasks = pd.concat(
+                        [df_tasks, new_row], ignore_index=True
+                    )
+                    conn.update(worksheet="Tasks", data=updated_tasks)
+
+                    st.cache_data.clear()
+                    st.success(
+                        f"Task {next_id} successfully saved to Google Sheets!"
+                    )
+                    st.rerun()
+
+                except Exception as err:
+                    st.error(f"Error updating sheet: {err}")

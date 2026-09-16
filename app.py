@@ -1,7 +1,8 @@
+import io
 import pandas as pd
 import plotly.express as px
+import requests
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 
 # Page Setup
 st.set_page_config(
@@ -27,16 +28,32 @@ if not st.session_state["authenticated"]:
                 st.error("Invalid Username or Password")
     st.stop()
 
-# Data Connection
-conn = st.connection("gsheets", type=GSheetsConnection)
+# Data Connection (Direct Fetching for Public Sheets)
+SHEET_ID = "1SjStdhep_n9B-Fu9yYjI8DB_ncSiRZHkqYbLyRg5evQ"
 
 
 @st.cache_data(ttl=5)
+def read_worksheet(sheet_name: str) -> pd.DataFrame:
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    response = requests.get(url, headers=headers)
+
+    if response.status_code != 200:
+        raise Exception(
+            f"HTTP Error {response.status_code}. Verify sheet sharing is set to 'Anyone with the link'."
+        )
+
+    return pd.read_csv(io.StringIO(response.text))
+
+
 def load_data():
-    df_p = conn.read(worksheet="Projects", ttl=5)
-    df_m = conn.read(worksheet="Milestones_Master", ttl=5)
-    df_t = conn.read(worksheet="Tasks", ttl=5)
-    return df_p, df_m, df_t
+    return (
+        read_worksheet("Projects"),
+        read_worksheet("Milestones_Master"),
+        read_worksheet("Tasks"),
+    )
 
 
 try:
@@ -95,12 +112,8 @@ elif mode == "⚙️ Management Portal":
     st.title("⚙️ Management Portal")
     st.subheader("Add New Task")
     with st.form("add_task_form"):
-        proj = st.selectbox(
-            "Project", df_projects["Project_Name"].unique()
-        )
-        stage = st.selectbox(
-            "Stage", df_milestones["Stage_Name"].unique()
-        )
+        proj = st.selectbox("Project", df_projects["Project_Name"].unique())
+        stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
         filtered_ms = df_milestones[
             df_milestones["Stage_Name"] == stage
         ]["Milestone_Name"].unique()

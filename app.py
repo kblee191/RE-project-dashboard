@@ -102,9 +102,9 @@ except Exception as e:
 
 # Sidebar Navigation Header
 with st.sidebar:
-    # 1. Dashboard Title Header
+    # 1. Bold & Large Dashboard Title
     st.markdown(
-        "<h3 style='color: #FFD700; margin-bottom: 0px;'>⚡ RE Project Dashboard</h3>",
+        "<h1 style='color: #FFD700; font-size: 26px; font-weight: 900; margin-bottom: 0px; line-height: 1.2;'>⚡ RE Project Dashboard</h1>",
         unsafe_allow_html=True,
     )
     st.markdown("---")

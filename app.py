@@ -102,7 +102,14 @@ except Exception as e:
 
 # Sidebar Navigation Header
 with st.sidebar:
-    # 1. Navigation Menu at TOP
+    # 1. Dashboard Title Header
+    st.markdown(
+        "<h3 style='color: #FFD700; margin-bottom: 0px;'>⚡ RE Project Dashboard</h3>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("---")
+
+    # 2. Navigation Menu
     mode = option_menu(
         menu_title="Navigation",
         options=["Executive Summary", "Project Deep-Dive", "Management Portal"],
@@ -130,10 +137,10 @@ with st.sidebar:
         },
     )
 
-    # 2. Dynamic Spacer pushes following content down
+    # 3. Dynamic Spacer pushes profile & logout to bottom
     st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
 
-    # 3. User Info & Logout Button at BOTTOM
+    # 4. User Info & Logout Button at BOTTOM
     st.markdown("---")
     st.markdown(f"### 👤 User: `{st.session_state['username']}`")
     if st.button("Log Out"):

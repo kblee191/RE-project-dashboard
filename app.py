@@ -109,7 +109,6 @@ sorted_project_dropdown = (
 
 # Sidebar Navigation Header
 with st.sidebar:
-    # 1. Bold & Large Dashboard Title
     st.markdown(
         """
         <div style="display: flex; align-items: center; gap: 10px;">
@@ -123,7 +122,6 @@ with st.sidebar:
     )
     st.markdown("---")
 
-    # 2. Navigation Menu
     mode = option_menu(
         menu_title="Navigation",
         options=[
@@ -156,17 +154,15 @@ with st.sidebar:
         },
     )
 
-    # 3. Dynamic Spacer pushes profile & logout to bottom
     st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
 
-    # 4. User Info & Logout Button at BOTTOM
     st.markdown("---")
     st.markdown(f"### 👤 User: `{st.session_state['username']}`")
     if st.button("Log Out"):
         st.session_state["authenticated"] = False
         st.rerun()
 
-# Executive Summary View (Displays projects in original Google Sheet / Project ID order)
+# Executive Summary View
 if mode == "Executive Summary":
     st.title("⚡ Portfolio Overview")
     col1, col2, col3 = st.columns(3)
@@ -206,6 +202,12 @@ elif mode == "New Project":
 
     next_project_id = f"P{len(df_projects) + 1:03d}"
 
+    # Dynamically find the date column name to match Google Sheet header exactly
+    date_col = next(
+        (c for c in df_projects.columns if "target" in c.lower()),
+        "Target_Completion_Date",
+    )
+
     with st.form("add_project_form"):
         st.text_input("Project ID", value=next_project_id, disabled=True)
         proj_name = st.text_input("Project Name")
@@ -218,23 +220,21 @@ elif mode == "New Project":
                 st.warning("Please fill in all required fields.")
             else:
                 try:
-                    new_project_row = pd.DataFrame(
-                        [
-                            {
-                                "Project_ID": next_project_id,
-                                "Project_Name": proj_name,
-                                "Capacity": capacity,
-                                "Project_Lead": proj_lead,
-                                "Target_Completion_Date": target_date.strftime(
-                                    "%d/%m/%Y"
-                                ),
-                            }
-                        ]
-                    )
+                    new_project_dict = {
+                        "Project_ID": next_project_id,
+                        "Project_Name": proj_name,
+                        "Capacity": capacity,
+                        "Project_Lead": proj_lead,
+                        date_col: target_date.strftime("%d/%m/%Y"),
+                    }
 
+                    new_project_row = pd.DataFrame([new_project_dict])
+
+                    # Concatenate while strictly preserving original sheet columns
                     updated_projects = pd.concat(
                         [df_projects, new_project_row], ignore_index=True
-                    )
+                    )[df_projects.columns]
+
                     conn.update(worksheet="Projects", data=updated_projects)
 
                     st.cache_data.clear()
@@ -256,18 +256,15 @@ elif mode == "Task Management":
 
     st.subheader("Add New Task")
 
-    # Project selection is sorted alphabetically
     proj = st.selectbox("Project", sorted_project_dropdown)
     stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
-    # Dynamically filter milestones for the selected stage
     filtered_ms = df_milestones[
         df_milestones["Stage_Name"].str.strip() == str(stage).strip()
     ]["Milestone_Name"].unique()
 
     ms = st.selectbox("Milestone", filtered_ms)
 
-    # Form for remaining task details
     with st.form("add_task_details_form"):
         desc = st.text_area("Task Description")
         assigned = st.text_input("Assigned To")

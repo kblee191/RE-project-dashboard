@@ -164,7 +164,7 @@ with st.sidebar:
 
 # Summary View
 if mode == "Summary":
-    st.title("⚡ Portfolio Overview")
+    st.title("📃Portfolio Overview")
     col1, col2, col3 = st.columns(3)
     col1.metric("Active Projects", len(df_projects))
     col2.metric("Total Tasks", len(df_tasks))

@@ -9,10 +9,22 @@ st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
 )
 
-# Custom Yellow & Black Theme CSS Injection
+# Custom Yellow & Black Theme + Sidebar Flex CSS Injection
 st.markdown(
     """
     <style>
+    /* Configure Sidebar as vertical flexbox container */
+    [data-testid="stSidebarUserContent"] {
+        display: flex !important;
+        flex-direction: column !important;
+        height: calc(100vh - 60px) !important;
+    }
+    
+    /* Spacer pushes elements below it to the bottom */
+    .sidebar-spacer {
+        flex-grow: 1 !important;
+    }
+
     /* Primary buttons styling */
     div.stButton > button {
         background-color: #FFD700 !important;
@@ -90,14 +102,7 @@ except Exception as e:
 
 # Sidebar Navigation Header
 with st.sidebar:
-    st.markdown(f"### 👤 User: `{st.session_state['username']}`")
-    if st.button("Log Out"):
-        st.session_state["authenticated"] = False
-        st.rerun()
-
-    st.markdown("---")
-
-    # Modern Sidebar Navigation Menu
+    # 1. Navigation Menu at TOP
     mode = option_menu(
         menu_title="Navigation",
         options=["Executive Summary", "Project Deep-Dive", "Management Portal"],
@@ -124,6 +129,16 @@ with st.sidebar:
             },
         },
     )
+
+    # 2. Dynamic Spacer pushes following content down
+    st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
+
+    # 3. User Info & Logout Button at BOTTOM
+    st.markdown("---")
+    st.markdown(f"### 👤 User: `{st.session_state['username']}`")
+    if st.button("Log Out"):
+        st.session_state["authenticated"] = False
+        st.rerun()
 
 # Executive Summary View
 if mode == "Executive Summary":
@@ -223,7 +238,6 @@ elif mode == "Management Portal":
 
                     st.cache_data.clear()
 
-                    # Save confirmation statement to session state before rerun
                     st.session_state["task_success_msg"] = (
                         f"✅ Task **{next_id}** has been successfully assigned to **{assigned}** and submitted!"
                     )

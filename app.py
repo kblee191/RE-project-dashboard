@@ -102,12 +102,12 @@ except Exception as e:
 
 # Sidebar Navigation Header
 with st.sidebar:
-    # 1. Bold & Large Dashboard Title (Aligned Flexbox Layout)
+    # 1. Bold & Large Dashboard Title (Icon scaled to 48px to match 2 lines of text)
     st.markdown(
         """
-        <div style="display: flex; align-items: flex-start; gap: 10px;">
-            <span style="font-size: 24px; line-height: 1.2;">⚡</span>
-            <div style="color: #FFD700; font-size: 24px; font-weight: 900; line-height: 1.2;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 48px; line-height: 1;">⚡</span>
+            <div style="color: #FFD700; font-size: 24px; font-weight: 900; line-height: 1.15;">
                 RE Project Dashboard
             </div>
         </div>

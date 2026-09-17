@@ -91,9 +91,10 @@ def load_data():
 
     for df in [df_p, df_m, df_t, df_o]:
         if df is not None and not df.empty:
-            df.columns = df.columns.str.strip()
-            for col in df.select_dtypes(include="object").columns:
-                df[col] = df[col].astype(str).str.strip()
+            df.columns = df.columns.astype(str).str.strip()
+            # Fixed Pandas4Warning by passing a list to select_dtypes
+            for col in df.select_dtypes(include=["object", "string"]).columns:
+                df[col] = df[col].fillna("").astype(str).str.strip()
 
     return df_p, df_m, df_t, df_o
 
@@ -112,11 +113,11 @@ def is_milestone_overridden(p_name, ms_name):
 
     match = df_overrides[
         (
-            df_overrides["Project_Name"].str.strip().str.lower()
+            df_overrides["Project_Name"].astype(str).str.strip().str.lower()
             == str(p_name).strip().lower()
         )
         & (
-            df_overrides["Milestone_Name"].str.strip().str.lower()
+            df_overrides["Milestone_Name"].astype(str).str.strip().str.lower()
             == str(ms_name).strip().lower()
         )
         & (df_overrides["Is_Overridden"].astype(str).str.upper() == "TRUE")
@@ -124,7 +125,7 @@ def is_milestone_overridden(p_name, ms_name):
 
     if not match.empty:
         reason = match.iloc[0].get("Override_Reason", "No reason provided")
-        return True, reason
+        return True, str(reason)
     return False, ""
 
 
@@ -207,7 +208,7 @@ if mode == "Summary":
         p_name = p_row.get("Project_Name", "")
 
         p_tasks = df_tasks[
-            df_tasks["Project_Name"].str.strip().str.lower()
+            df_tasks["Project_Name"].astype(str).str.strip().str.lower()
             == str(p_name).strip().lower()
         ]
 
@@ -215,7 +216,7 @@ if mode == "Summary":
         completed_t = (
             len(
                 p_tasks[
-                    p_tasks["Status"].str.strip().str.upper() == "COMPLETED"
+                    p_tasks["Status"].astype(str).str.strip().str.upper() == "COMPLETED"
                 ]
             )
             if total_t > 0
@@ -224,7 +225,7 @@ if mode == "Summary":
         ongoing_t = (
             len(
                 p_tasks[
-                    p_tasks["Status"].str.strip().str.upper() == "ON-GOING"
+                    p_tasks["Status"].astype(str).str.strip().str.upper() == "ON-GOING"
                 ]
             )
             if total_t > 0
@@ -236,7 +237,7 @@ if mode == "Summary":
 
         for stg in ordered_stages:
             stg_ms = df_milestones[
-                df_milestones["Stage_Name"].str.strip() == str(stg).strip()
+                df_milestones["Stage_Name"].astype(str).str.strip() == str(stg).strip()
             ]["Milestone_Name"].unique()
 
             ms_percentages = []
@@ -247,14 +248,14 @@ if mode == "Summary":
                     m_pct = 100.0
                 else:
                     ms_tasks = p_tasks[
-                        p_tasks["Milestone_Name"].str.strip().str.lower()
+                        p_tasks["Milestone_Name"].astype(str).str.strip().str.lower()
                         == str(ms_name).strip().lower()
                     ]
                     m_total = len(ms_tasks)
                     m_completed = (
                         len(
                             ms_tasks[
-                                ms_tasks["Status"].str.strip().str.upper()
+                                ms_tasks["Status"].astype(str).str.strip().str.upper()
                                 == "COMPLETED"
                             ]
                         )
@@ -329,7 +330,7 @@ elif mode == "Project Tracking":
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
     proj_tasks = df_tasks[
-        df_tasks["Project_Name"].str.strip().str.lower()
+        df_tasks["Project_Name"].astype(str).str.strip().str.lower()
         == str(selected_proj).strip().lower()
     ]
 
@@ -347,7 +348,7 @@ elif mode == "Project Tracking":
 
     for stage_name in unique_stages:
         stg_milestones = df_milestones[
-            df_milestones["Stage_Name"].str.strip() == str(stage_name).strip()
+            df_milestones["Stage_Name"].astype(str).str.strip() == str(stage_name).strip()
         ]["Milestone_Name"].unique()
 
         ms_data = {}
@@ -363,14 +364,14 @@ elif mode == "Project Tracking":
                 ms_tasks = pd.DataFrame()
             else:
                 ms_tasks = proj_tasks[
-                    proj_tasks["Milestone_Name"].str.strip().str.lower()
+                    proj_tasks["Milestone_Name"].astype(str).str.strip().str.lower()
                     == str(ms_name).strip().lower()
                 ]
                 total_t = len(ms_tasks)
                 completed_t = (
                     len(
                         ms_tasks[
-                            ms_tasks["Status"].str.strip().str.upper()
+                            ms_tasks["Status"].astype(str).str.strip().str.upper()
                             == "COMPLETED"
                         ]
                     )
@@ -525,7 +526,7 @@ elif mode == "Add & Manage Task":
     stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
     filtered_ms = df_milestones[
-        df_milestones["Stage_Name"].str.strip() == str(stage).strip()
+        df_milestones["Stage_Name"].astype(str).str.strip() == str(stage).strip()
     ]["Milestone_Name"].unique()
 
     ms = st.selectbox("Milestone", filtered_ms)
@@ -595,11 +596,11 @@ elif mode == "Add & Manage Task":
     with tab_update:
         matching_tasks = df_tasks[
             (
-                df_tasks["Project_Name"].str.strip().str.lower()
+                df_tasks["Project_Name"].astype(str).str.strip().str.lower()
                 == str(proj).strip().lower()
             )
             & (
-                df_tasks["Milestone_Name"].str.strip().str.lower()
+                df_tasks["Milestone_Name"].astype(str).str.strip().str.lower()
                 == str(ms).strip().lower()
             )
         ]
@@ -622,11 +623,11 @@ elif mode == "Add & Manage Task":
             selected_task_id = task_options[selected_task_label]
 
             current_row = matching_tasks[
-                matching_tasks["Task_ID"] == selected_task_id
+                matching_tasks["Task_ID"].astype(str) == str(selected_task_id)
             ].iloc[0]
 
             status_choices = ["On-going", "Completed", "Cancelled"]
-            current_status = current_row.get("Status", "On-going")
+            current_status = str(current_row.get("Status", "On-going"))
             status_index = (
                 status_choices.index(current_status)
                 if current_status in status_choices
@@ -647,7 +648,7 @@ elif mode == "Add & Manage Task":
                 if st.form_submit_button("Update Task Status"):
                     try:
                         task_idx = df_tasks[
-                            df_tasks["Task_ID"] == selected_task_id
+                            df_tasks["Task_ID"].astype(str) == str(selected_task_id)
                         ].index[0]
                         df_tasks.loc[task_idx, "Status"] = new_status
                         df_tasks.loc[task_idx, "Risks_Issues_Remarks"] = (
@@ -690,17 +691,19 @@ elif mode == "Add & Manage Task":
                 try:
                     df_o_clean = df_overrides.copy()
 
-                    # Drop existing override record if present
+                    # Drop existing override record if present (safely cast to string)
                     df_o_clean = df_o_clean[
                         ~(
                             (
                                 df_o_clean["Project_Name"]
+                                .astype(str)
                                 .str.strip()
                                 .str.lower()
                                 == str(proj).strip().lower()
                             )
                             & (
                                 df_o_clean["Milestone_Name"]
+                                .astype(str)
                                 .str.strip()
                                 .str.lower()
                                 == str(ms).strip().lower()

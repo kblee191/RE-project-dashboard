@@ -155,7 +155,7 @@ with st.sidebar:
         st.rerun()
 
 # Executive Summary View
-if mode == "Executive Summary":
+if mode == "Summary":
     st.title("📒Portfolio Overview")
     col1, col2, col3 = st.columns(3)
     col1.metric("Active Projects", len(df_projects))

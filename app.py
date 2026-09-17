@@ -48,6 +48,13 @@ st.markdown(
     .stProgress > div > div > div > div {
         background-color: #FFD700 !important;
     }
+
+    /* Fix selected menu item icon color so it is visible against yellow background */
+    .nav-link.active i, 
+    .nav-link-selected i,
+    [class*="nav-link"][class*="active"] i {
+        color: #000000 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -136,7 +143,7 @@ with st.sidebar:
                 "padding": "0!important",
                 "background-color": "transparent",
             },
-            "icon": {"color": "#FFD700", "font-size": "18px"},
+            "icon": {"font-size": "18px"},
             "nav-link": {
                 "font-size": "14px",
                 "text-align": "left",

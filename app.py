@@ -91,12 +91,6 @@ def load_data():
             for col in df.select_dtypes(include="object").columns:
                 df[col] = df[col].astype(str).str.strip()
 
-    # Sort Projects alphabetically by Project_Name
-    if df_p is not None and not df_p.empty and "Project_Name" in df_p.columns:
-        df_p = df_p.sort_values(
-            by="Project_Name", key=lambda col: col.str.lower()
-        ).reset_index(drop=True)
-
     return df_p, df_m, df_t
 
 
@@ -106,8 +100,8 @@ except Exception as e:
     st.error(f"Failed to load data from Google Sheets: {e}")
     st.stop()
 
-# Helper function to get sorted list of project names
-sorted_project_list = (
+# Alphabetically sorted project list exclusively for dropdown selections
+sorted_project_dropdown = (
     sorted(df_projects["Project_Name"].unique(), key=lambda x: str(x).lower())
     if "Project_Name" in df_projects.columns
     else []
@@ -172,7 +166,7 @@ with st.sidebar:
         st.session_state["authenticated"] = False
         st.rerun()
 
-# Executive Summary View
+# Executive Summary View (Displays projects in original Google Sheet / Project ID order)
 if mode == "Executive Summary":
     st.title("⚡ Portfolio Overview")
     col1, col2, col3 = st.columns(3)
@@ -192,7 +186,7 @@ if mode == "Executive Summary":
 # Project Deep-Dive View
 elif mode == "Project Deep-Dive":
     st.title("🔍 Project Deep-Dive & Task Updates")
-    selected_proj = st.selectbox("Select Project", sorted_project_list)
+    selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
     p_tasks = df_tasks[
         df_tasks["Project_Name"].str.lower() == str(selected_proj).lower()
@@ -262,8 +256,8 @@ elif mode == "Task Management":
 
     st.subheader("Add New Task")
 
-    # Interactive Dropdowns placed outside st.form so selecting Stage instantly updates Milestones
-    proj = st.selectbox("Project", sorted_project_list)
+    # Project selection is sorted alphabetically
+    proj = st.selectbox("Project", sorted_project_dropdown)
     stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
     # Dynamically filter milestones for the selected stage
@@ -273,7 +267,7 @@ elif mode == "Task Management":
 
     ms = st.selectbox("Milestone", filtered_ms)
 
-    # Form for the remaining task details
+    # Form for remaining task details
     with st.form("add_task_details_form"):
         desc = st.text_area("Task Description")
         assigned = st.text_input("Assigned To")

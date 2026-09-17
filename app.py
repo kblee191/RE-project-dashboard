@@ -92,7 +92,6 @@ def load_data():
     for df in [df_p, df_m, df_t, df_o]:
         if df is not None and not df.empty:
             df.columns = df.columns.astype(str).str.strip()
-            # Fixed Pandas4Warning by passing a list to select_dtypes
             for col in df.select_dtypes(include=["object", "string"]).columns:
                 df[col] = df[col].fillna("").astype(str).str.strip()
 
@@ -107,24 +106,51 @@ except Exception as e:
 
 
 def is_milestone_overridden(p_name, ms_name):
-    """Helper to check if a milestone is overridden for a project."""
+    """Flexible helper to check if a milestone is overridden for a project."""
     if df_overrides is None or df_overrides.empty:
         return False, ""
 
-    match = df_overrides[
+    df_temp = df_overrides.copy()
+    df_temp.columns = [
+        str(col).lower().replace(" ", "").replace("_", "")
+        for col in df_temp.columns
+    ]
+
+    proj_col = next((c for c in df_temp.columns if "project" in c), None)
+    ms_col = next((c for c in df_temp.columns if "milestone" in c), None)
+    override_col = next(
+        (c for c in df_temp.columns if "override" in c and "reason" not in c),
+        None,
+    )
+    reason_col = next((c for c in df_temp.columns if "reason" in c), None)
+
+    if not (proj_col and ms_col and override_col):
+        return False, ""
+
+    match = df_temp[
         (
-            df_overrides["Project_Name"].astype(str).str.strip().str.lower()
+            df_temp[proj_col].astype(str).str.strip().str.lower()
             == str(p_name).strip().lower()
         )
         & (
-            df_overrides["Milestone_Name"].astype(str).str.strip().str.lower()
+            df_temp[ms_col].astype(str).str.strip().str.lower()
             == str(ms_name).strip().lower()
         )
-        & (df_overrides["Is_Overridden"].astype(str).str.upper() == "TRUE")
+        & (
+            df_temp[override_col]
+            .astype(str)
+            .str.strip()
+            .str.upper()
+            .isin(["TRUE", "1", "YES"])
+        )
     ]
 
     if not match.empty:
-        reason = match.iloc[0].get("Override_Reason", "No reason provided")
+        reason = (
+            match.iloc[0].get(reason_col, "No reason provided")
+            if reason_col
+            else "No reason provided"
+        )
         return True, str(reason)
     return False, ""
 
@@ -691,18 +717,26 @@ elif mode == "Add & Manage Task":
                 try:
                     df_o_clean = df_overrides.copy()
 
-                    # Drop existing override record if present (safely cast to string)
+                    p_col = next(
+                        (c for c in df_o_clean.columns if "project" in c.lower()),
+                        "Project_Name",
+                    )
+                    m_col = next(
+                        (c for c in df_o_clean.columns if "milestone" in c.lower()),
+                        "Milestone_Name",
+                    )
+
                     df_o_clean = df_o_clean[
                         ~(
                             (
-                                df_o_clean["Project_Name"]
+                                df_o_clean[p_col]
                                 .astype(str)
                                 .str.strip()
                                 .str.lower()
                                 == str(proj).strip().lower()
                             )
                             & (
-                                df_o_clean["Milestone_Name"]
+                                df_o_clean[m_col]
                                 .astype(str)
                                 .str.strip()
                                 .str.lower()

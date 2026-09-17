@@ -181,7 +181,7 @@ if mode == "Summary":
 
 # Project Tracking View
 elif mode == "Project Tracking":
-    st.title("🔍 Project Deep-Dive & Task Updates")
+    st.title("🔍 Track the Progress of a Project")
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
     p_tasks = df_tasks[

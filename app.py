@@ -280,18 +280,10 @@ if mode == "Summary":
 
     df_summary = pd.DataFrame(summary_rows)
 
-    # Top Metrics Bar
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Active Projects", len(df_projects))
+    # Top Metrics Bar (Number of Projects & Completed Projects)
+    col1, col2 = st.columns(2)
+    col1.metric("Number of Projects", len(df_projects))
     col2.metric("Completed Projects", completed_projects_count)
-    col3.metric("Total Tasks", len(df_tasks))
-
-    all_completed_tasks = (
-        len(df_tasks[df_tasks["Status"].str.strip().str.upper() == "COMPLETED"])
-        if "Status" in df_tasks.columns
-        else 0
-    )
-    col4.metric("Completed Tasks", all_completed_tasks)
 
     st.markdown("---")
 

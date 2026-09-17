@@ -28,7 +28,7 @@ st.markdown(
     }
     
     /* Input fields and containers styling */
-    .stTextInput>div>div>input, .stSelectbox>div>div, .stTextArea>div>div>textarea {
+    .stTextInput>div>div>input, .stSelectbox>div>div, .stTextArea>div>div>textarea, .stDateInput>div>div>input {
         background-color: #1A1A1A !important;
         color: #FFFFFF !important;
         border: 1px solid #333333 !important;
@@ -177,11 +177,20 @@ elif mode == "Management Portal":
         desc = st.text_area("Task Description")
         assigned = st.text_input("Assigned To")
 
+        # Date Pickers
+        col_start, col_due = st.columns(2)
+        with col_start:
+            start_date = st.date_input("Start Date")
+        with col_due:
+            due_date = st.date_input("Due Date")
+
         if st.form_submit_button("Submit Task"):
             if not desc or not assigned:
                 st.warning(
                     "Please fill in both the Task Description and Assigned To fields."
                 )
+            elif due_date < start_date:
+                st.error("Due Date cannot be earlier than Start Date.")
             else:
                 try:
                     next_id = f"T{len(df_tasks) + 1:03d}"
@@ -195,8 +204,8 @@ elif mode == "Management Portal":
                                 "Milestone_Name": ms,
                                 "Task_Description": desc,
                                 "Assigned_To": assigned,
-                                "Start_Date": "",
-                                "Due_Date": "",
+                                "Start_Date": start_date.strftime("%d/%m/%Y"),
+                                "Due_Date": due_date.strftime("%d/%m/%Y"),
                                 "Status": "On-going",
                                 "Risks_Issues_Remarks": "",
                             }

@@ -162,7 +162,7 @@ with st.sidebar:
         st.session_state["authenticated"] = False
         st.rerun()
 
-# Executive Summary View
+# Summary View
 if mode == "Summary":
     st.title("⚡ Portfolio Overview")
     col1, col2, col3 = st.columns(3)
@@ -179,9 +179,9 @@ if mode == "Summary":
     st.markdown("---")
     st.dataframe(df_projects, use_container_width=True)
 
-# Project Deep-Dive View
+# Project Tracking View
 elif mode == "Project Tracking":
-    st.title("🔍 Project Completion & Task Updates")
+    st.title("🔍 Project Deep-Dive & Task Updates")
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
     p_tasks = df_tasks[
@@ -193,16 +193,15 @@ elif mode == "Project Tracking":
     else:
         st.info("No tasks recorded for this project yet.")
 
-# New Project Creation View
+# Create New Project View
 elif mode == "Create New Project":
-    st.title("➕ Create a new project")
+    st.title("➕ Create New Project")
 
     if "project_success_msg" in st.session_state:
         st.success(st.session_state.pop("project_success_msg"))
 
     next_project_id = f"P{len(df_projects) + 1:03d}"
 
-    # Dynamically find the date column name to match Google Sheet header exactly
     date_col = next(
         (c for c in df_projects.columns if "target" in c.lower()),
         "Target_Completion_Date",
@@ -230,7 +229,6 @@ elif mode == "Create New Project":
 
                     new_project_row = pd.DataFrame([new_project_dict])
 
-                    # Concatenate while strictly preserving original sheet columns
                     updated_projects = pd.concat(
                         [df_projects, new_project_row], ignore_index=True
                     )[df_projects.columns]
@@ -247,15 +245,14 @@ elif mode == "Create New Project":
                 except Exception as err:
                     st.error(f"Error updating Projects sheet: {err}")
 
-# Task Management View
+# Add & Manage Task View
 elif mode == "Add & Manage Task":
     st.title("⚙️ Task Management")
 
     if "task_success_msg" in st.session_state:
         st.success(st.session_state.pop("task_success_msg"))
 
-    st.subheader("Add New Task")
-
+    # Shared Selection Dropdowns
     proj = st.selectbox("Project", sorted_project_dropdown)
     stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
@@ -265,55 +262,146 @@ elif mode == "Add & Manage Task":
 
     ms = st.selectbox("Milestone", filtered_ms)
 
-    with st.form("add_task_details_form"):
-        desc = st.text_area("Task Description")
-        assigned = st.text_input("Assigned To")
+    st.markdown("---")
 
-        col_start, col_due = st.columns(2)
-        with col_start:
-            start_date = st.date_input("Start Date")
-        with col_due:
-            due_date = st.date_input("Due Date")
+    # Tabs for adding a new task vs updating an existing task
+    tab_add, tab_update = st.tabs(
+        ["➕ Add New Task", "📝 Update Task Status"]
+    )
 
-        if st.form_submit_button("Submit Task"):
-            if not desc or not assigned:
-                st.warning(
-                    "Please fill in both the Task Description and Assigned To fields."
+    # --- TAB 1: ADD NEW TASK ---
+    with tab_add:
+        with st.form("add_task_details_form"):
+            desc = st.text_area("Task Description")
+            assigned = st.text_input("Assigned To")
+
+            col_start, col_due = st.columns(2)
+            with col_start:
+                start_date = st.date_input("Start Date")
+            with col_due:
+                due_date = st.date_input("Due Date")
+
+            if st.form_submit_button("Submit Task"):
+                if not desc or not assigned:
+                    st.warning(
+                        "Please fill in both the Task Description and Assigned To fields."
+                    )
+                elif due_date < start_date:
+                    st.error("Due Date cannot be earlier than Start Date.")
+                else:
+                    try:
+                        next_id = f"T{len(df_tasks) + 1:03d}"
+
+                        new_row = pd.DataFrame(
+                            [
+                                {
+                                    "Task_ID": next_id,
+                                    "Project_Name": proj,
+                                    "Stage_Name": stage,
+                                    "Milestone_Name": ms,
+                                    "Task_Description": desc,
+                                    "Assigned_To": assigned,
+                                    "Start_Date": start_date.strftime(
+                                        "%d/%m/%Y"
+                                    ),
+                                    "Due_Date": due_date.strftime("%d/%m/%Y"),
+                                    "Status": "On-going",
+                                    "Risks_Issues_Remarks": "",
+                                }
+                            ]
+                        )
+
+                        updated_tasks = pd.concat(
+                            [df_tasks, new_row], ignore_index=True
+                        )
+                        conn.update(worksheet="Tasks", data=updated_tasks)
+
+                        st.cache_data.clear()
+
+                        st.session_state["task_success_msg"] = (
+                            f"✅ Task **{next_id}** has been successfully created and assigned to **{assigned}**!"
+                        )
+                        st.rerun()
+
+                    except Exception as err:
+                        st.error(f"Error updating sheet: {err}")
+
+    # --- TAB 2: UPDATE EXISTING TASK STATUS ---
+    with tab_update:
+        # Filter tasks matching current Project and Milestone
+        matching_tasks = df_tasks[
+            (
+                df_tasks["Project_Name"].str.strip().str.lower()
+                == str(proj).strip().lower()
+            )
+            & (
+                df_tasks["Milestone_Name"].str.strip().str.lower()
+                == str(ms).strip().lower()
+            )
+        ]
+
+        if matching_tasks.empty:
+            st.info(
+                f"No tasks currently exist under **{ms}** for project **{proj}**."
+            )
+        else:
+            # Dropdown options formatted as: Task_ID - Description (Assigned To)
+            task_options = {
+                f"{row['Task_ID']} - {row['Task_Description']} (Assigned to: {row['Assigned_To']})": row[
+                    "Task_ID"
+                ]
+                for _, row in matching_tasks.iterrows()
+            }
+
+            selected_task_label = st.selectbox(
+                "Select Task to Update", list(task_options.keys())
+            )
+            selected_task_id = task_options[selected_task_label]
+
+            # Fetch current details of selected task
+            current_row = matching_tasks[
+                matching_tasks["Task_ID"] == selected_task_id
+            ].iloc[0]
+
+            # Options matching Google Sheet Status choices
+            status_choices = ["On-going", "Completed", "Cancelled"]
+            current_status = current_row.get("Status", "On-going")
+            status_index = (
+                status_choices.index(current_status)
+                if current_status in status_choices
+                else 0
+            )
+
+            with st.form("update_status_form"):
+                new_status = st.selectbox(
+                    "Task Status", status_choices, index=status_index
                 )
-            elif due_date < start_date:
-                st.error("Due Date cannot be earlier than Start Date.")
-            else:
-                try:
-                    next_id = f"T{len(df_tasks) + 1:03d}"
+                new_remarks = st.text_area(
+                    "Risks / Issues / Remarks",
+                    value=str(
+                        current_row.get("Risks_Issues_Remarks", "")
+                    ).replace("nan", ""),
+                )
 
-                    new_row = pd.DataFrame(
-                        [
-                            {
-                                "Task_ID": next_id,
-                                "Project_Name": proj,
-                                "Stage_Name": stage,
-                                "Milestone_Name": ms,
-                                "Task_Description": desc,
-                                "Assigned_To": assigned,
-                                "Start_Date": start_date.strftime("%d/%m/%Y"),
-                                "Due_Date": due_date.strftime("%d/%m/%Y"),
-                                "Status": "On-going",
-                                "Risks_Issues_Remarks": "",
-                            }
-                        ]
-                    )
+                if st.form_submit_button("Update Task Status"):
+                    try:
+                        # Update df_tasks row
+                        task_idx = df_tasks[
+                            df_tasks["Task_ID"] == selected_task_id
+                        ].index[0]
+                        df_tasks.loc[task_idx, "Status"] = new_status
+                        df_tasks.loc[task_idx, "Risks_Issues_Remarks"] = (
+                            new_remarks
+                        )
 
-                    updated_tasks = pd.concat(
-                        [df_tasks, new_row], ignore_index=True
-                    )
-                    conn.update(worksheet="Tasks", data=updated_tasks)
+                        conn.update(worksheet="Tasks", data=df_tasks)
 
-                    st.cache_data.clear()
+                        st.cache_data.clear()
 
-                    st.session_state["task_success_msg"] = (
-                        f"✅ Task **{next_id}** has been successfully assigned to **{assigned}** and submitted!"
-                    )
-                    st.rerun()
+                        st.session_state["task_success_msg"] = (
+                            f"✅ Task **{selected_task_id}** updated to **{new_status}**!"
+                        )
+                        st.rerun()
 
-                except Exception as err:
-                    st.error(f"Error updating sheet: {err}")
+                    except Exception as err:
+                        st.error(f"Error updating task status: {err}")

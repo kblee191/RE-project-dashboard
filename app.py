@@ -13,25 +13,16 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Balanced top padding: removes big gap without clipping the running status widget */
     .block-container {
         padding-top: 3.5rem !important;
         padding-bottom: 2rem !important;
     }
-
-    /* Configure Sidebar as vertical flexbox container */
     [data-testid="stSidebarUserContent"] {
         display: flex !important;
         flex-direction: column !important;
         height: calc(100vh - 60px) !important;
     }
-    
-    /* Spacer pushes elements below it to the bottom */
-    .sidebar-spacer {
-        flex-grow: 1 !important;
-    }
-
-    /* Primary buttons styling */
+    .sidebar-spacer { flex-grow: 1 !important; }
     div.stButton > button {
         background-color: #FFD700 !important;
         color: #000000 !important;
@@ -44,21 +35,9 @@ st.markdown(
         background-color: #E6C200 !important;
         color: #000000 !important;
     }
-    
-    /* Metric Card Value Accent */
-    [data-testid="stMetricValue"] {
-        color: #FFD700 !important;
-    }
-
-    /* Streamlit Progress Bar Styling */
-    .stProgress > div > div > div > div {
-        background-color: #FFD700 !important;
-    }
-
-    /* Fix selected menu item icon color so it is visible against yellow background */
-    .nav-link.active i, 
-    .nav-link-selected i,
-    [class*="nav-link"][class*="active"] i {
+    [data-testid="stMetricValue"] { color: #FFD700 !important; }
+    .stProgress > div > div > div > div { background-color: #FFD700 !important; }
+    .nav-link.active i, .nav-link-selected i, [class*="nav-link"][class*="active"] i {
         color: #000000 !important;
     }
     </style>
@@ -71,9 +50,7 @@ if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 if not st.session_state["authenticated"]:
-    # Center and constrain the width of the login form using columns
     _, login_col, _ = st.columns([1, 1.2, 1])
-
     with login_col:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.title("🔒 RE Dashboard Login")
@@ -100,23 +77,57 @@ def load_data():
     df_m = conn.read(worksheet="Milestones_Master", ttl=5)
     df_t = conn.read(worksheet="Tasks", ttl=5)
 
-    # Clean leading/trailing spaces from string columns
-    for df in [df_p, df_m, df_t]:
+    try:
+        df_o = conn.read(worksheet="Milestone_Overrides", ttl=5)
+    except Exception:
+        df_o = pd.DataFrame(
+            columns=[
+                "Project_Name",
+                "Milestone_Name",
+                "Is_Overridden",
+                "Override_Reason",
+            ]
+        )
+
+    for df in [df_p, df_m, df_t, df_o]:
         if df is not None and not df.empty:
             df.columns = df.columns.str.strip()
             for col in df.select_dtypes(include="object").columns:
                 df[col] = df[col].astype(str).str.strip()
 
-    return df_p, df_m, df_t
+    return df_p, df_m, df_t, df_o
 
 
 try:
-    df_projects, df_milestones, df_tasks = load_data()
+    df_projects, df_milestones, df_tasks, df_overrides = load_data()
 except Exception as e:
     st.error(f"Failed to load data from Google Sheets: {e}")
     st.stop()
 
-# Alphabetically sorted project list exclusively for dropdown selections
+
+def is_milestone_overridden(p_name, ms_name):
+    """Helper to check if a milestone is overridden for a project."""
+    if df_overrides is None or df_overrides.empty:
+        return False, ""
+
+    match = df_overrides[
+        (
+            df_overrides["Project_Name"].str.strip().str.lower()
+            == str(p_name).strip().lower()
+        )
+        & (
+            df_overrides["Milestone_Name"].str.strip().str.lower()
+            == str(ms_name).strip().lower()
+        )
+        & (df_overrides["Is_Overridden"].astype(str).str.upper() == "TRUE")
+    ]
+
+    if not match.empty:
+        reason = match.iloc[0].get("Override_Reason", "No reason provided")
+        return True, reason
+    return False, ""
+
+
 sorted_project_dropdown = (
     sorted(df_projects["Project_Name"].unique(), key=lambda x: str(x).lower())
     if "Project_Name" in df_projects.columns
@@ -170,18 +181,16 @@ with st.sidebar:
     )
 
     st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
-
     st.markdown("---")
     st.markdown(f"### 👤 User: `{st.session_state['username']}`")
     if st.button("Log Out"):
         st.session_state["authenticated"] = False
         st.rerun()
 
-# Summary View (Enhanced Portfolio Overview)
+# Summary View
 if mode == "Summary":
-    st.title("📃Portfolio Overview")
+    st.title("📃 Portfolio Overview")
 
-    # Get ordered list of stages
     if "Stage_Order" in df_milestones.columns:
         ordered_stages = (
             df_milestones.sort_values("Stage_Order")["Stage_Name"]
@@ -197,7 +206,6 @@ if mode == "Summary":
     for idx, p_row in df_projects.iterrows():
         p_name = p_row.get("Project_Name", "")
 
-        # Filter tasks for current project
         p_tasks = df_tasks[
             df_tasks["Project_Name"].str.strip().str.lower()
             == str(p_name).strip().lower()
@@ -223,7 +231,6 @@ if mode == "Summary":
             else 0
         )
 
-        # Calculate Hierarchical Completion Percentage & Current Stage
         stage_percentages = []
         current_stage = None
 
@@ -235,22 +242,29 @@ if mode == "Summary":
             ms_percentages = []
 
             for ms_name in stg_ms:
-                ms_tasks = p_tasks[
-                    p_tasks["Milestone_Name"].str.strip().str.lower()
-                    == str(ms_name).strip().lower()
-                ]
-                m_total = len(ms_tasks)
-                m_completed = (
-                    len(
-                        ms_tasks[
-                            ms_tasks["Status"].str.strip().str.upper()
-                            == "COMPLETED"
-                        ]
+                overridden, _ = is_milestone_overridden(p_name, ms_name)
+                if overridden:
+                    m_pct = 100.0
+                else:
+                    ms_tasks = p_tasks[
+                        p_tasks["Milestone_Name"].str.strip().str.lower()
+                        == str(ms_name).strip().lower()
+                    ]
+                    m_total = len(ms_tasks)
+                    m_completed = (
+                        len(
+                            ms_tasks[
+                                ms_tasks["Status"].str.strip().str.upper()
+                                == "COMPLETED"
+                            ]
+                        )
+                        if m_total > 0
+                        else 0
                     )
-                    if m_total > 0
-                    else 0
-                )
-                m_pct = (m_completed / m_total * 100.0) if m_total > 0 else 0.0
+                    m_pct = (
+                        (m_completed / m_total * 100.0) if m_total > 0 else 0.0
+                    )
+
                 ms_percentages.append(m_pct)
 
             stg_pct = (
@@ -260,7 +274,6 @@ if mode == "Summary":
             )
             stage_percentages.append(stg_pct)
 
-            # Current stage is the first stage that is not 100% complete
             if stg_pct < 100.0 and current_stage is None:
                 current_stage = stg
 
@@ -270,8 +283,7 @@ if mode == "Summary":
             else 0.0
         )
 
-        # Handle completed projects and stage assignment
-        if overall_pct >= 100.0 and total_t > 0:
+        if overall_pct >= 100.0 and len(ordered_stages) > 0:
             completed_projects_count += 1
             current_stage = "Completed"
         elif current_stage is None:
@@ -290,14 +302,12 @@ if mode == "Summary":
 
     df_summary = pd.DataFrame(summary_rows)
 
-    # Top Metrics Bar (Number of Projects & Completed Projects)
     col1, col2 = st.columns(2)
     col1.metric("Number of Projects", len(df_projects))
     col2.metric("Completed Projects", completed_projects_count)
 
     st.markdown("---")
 
-    # Interactive Summary Table
     st.dataframe(
         df_summary,
         use_container_width=True,
@@ -315,7 +325,7 @@ if mode == "Summary":
 
 # Project Tracking View
 elif mode == "Project Tracking":
-    st.title("🔍Project Progress Tracking")
+    st.title("🔍 Project Progress Tracking")
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
     proj_tasks = df_tasks[
@@ -344,24 +354,31 @@ elif mode == "Project Tracking":
         ms_percentages = []
 
         for ms_name in stg_milestones:
-            ms_tasks = proj_tasks[
-                proj_tasks["Milestone_Name"].str.strip().str.lower()
-                == str(ms_name).strip().lower()
-            ]
+            overridden, reason = is_milestone_overridden(selected_proj, ms_name)
 
-            total_t = len(ms_tasks)
-            completed_t = (
-                len(
-                    ms_tasks[
-                        ms_tasks["Status"].str.strip().str.upper()
-                        == "COMPLETED"
-                    ]
+            if overridden:
+                ms_pct = 100.0
+                total_t = 0
+                completed_t = 0
+                ms_tasks = pd.DataFrame()
+            else:
+                ms_tasks = proj_tasks[
+                    proj_tasks["Milestone_Name"].str.strip().str.lower()
+                    == str(ms_name).strip().lower()
+                ]
+                total_t = len(ms_tasks)
+                completed_t = (
+                    len(
+                        ms_tasks[
+                            ms_tasks["Status"].str.strip().str.upper()
+                            == "COMPLETED"
+                        ]
+                    )
+                    if total_t > 0
+                    else 0
                 )
-                if total_t > 0
-                else 0
-            )
+                ms_pct = (completed_t / total_t * 100) if total_t > 0 else 0.0
 
-            ms_pct = (completed_t / total_t * 100) if total_t > 0 else 0.0
             ms_percentages.append(ms_pct)
 
             ms_data[ms_name] = {
@@ -369,6 +386,8 @@ elif mode == "Project Tracking":
                 "total": total_t,
                 "completed": completed_t,
                 "tasks": ms_tasks,
+                "overridden": overridden,
+                "reason": reason,
             }
 
         stg_pct = (
@@ -405,11 +424,21 @@ elif mode == "Project Tracking":
             ms_pct = m_info["pct"]
             t_df = m_info["tasks"]
 
-            expander_title = f"🎯 {ms_name} — {ms_pct:.0f}% ({m_info['completed']}/{m_info['total']} Tasks Completed)"
+            if m_info["overridden"]:
+                expander_title = (
+                    f"🎯 {ms_name} — 100% (⚡ Overridden by Lead)"
+                )
+            else:
+                expander_title = f"🎯 {ms_name} — {ms_pct:.0f}% ({m_info['completed']}/{m_info['total']} Tasks Completed)"
 
             with st.expander(expander_title):
                 st.progress(ms_pct / 100.0)
-                if not t_df.empty:
+
+                if m_info["overridden"]:
+                    st.info(
+                        f"**Milestone Overridden as Complete.**\n\n**Reason:** {m_info['reason']}"
+                    )
+                elif not t_df.empty:
                     display_cols = [
                         c
                         for c in [
@@ -435,7 +464,7 @@ elif mode == "Project Tracking":
 
 # Create New Project View
 elif mode == "Create New Project":
-    st.title("➕Create New Project")
+    st.title("➕ Create New Project")
 
     if "project_success_msg" in st.session_state:
         st.success(st.session_state.pop("project_success_msg"))
@@ -487,7 +516,7 @@ elif mode == "Create New Project":
 
 # Add & Manage Task View
 elif mode == "Add & Manage Task":
-    st.title("⚙️Task Management")
+    st.title("⚙️ Task Management")
 
     if "task_success_msg" in st.session_state:
         st.success(st.session_state.pop("task_success_msg"))
@@ -503,8 +532,8 @@ elif mode == "Add & Manage Task":
 
     st.markdown("---")
 
-    tab_add, tab_update = st.tabs(
-        ["➕ Add New Task", "📝 Update Task Status"]
+    tab_add, tab_update, tab_override = st.tabs(
+        ["➕ Add New Task", "📝 Update Task Status", "⚡ Override Milestone"]
     )
 
     with tab_add:
@@ -636,3 +665,74 @@ elif mode == "Add & Manage Task":
 
                     except Exception as err:
                         st.error(f"Error updating task status: {err}")
+
+    with tab_override:
+        is_currently_overridden, current_reason = is_milestone_overridden(
+            proj, ms
+        )
+
+        st.markdown(
+            f"Set override status for **{ms}** on project **{proj}**:"
+        )
+
+        with st.form("override_milestone_form"):
+            override_toggle = st.checkbox(
+                "Mark Milestone as Fully Completed (Override)",
+                value=is_currently_overridden,
+            )
+            override_reason_text = st.text_area(
+                "Reason for Override",
+                value=current_reason,
+                placeholder="e.g., Pre-completed prior to project start or milestone not applicable.",
+            )
+
+            if st.form_submit_button("Save Override Setting"):
+                try:
+                    df_o_clean = df_overrides.copy()
+
+                    # Drop existing override record if present
+                    df_o_clean = df_o_clean[
+                        ~(
+                            (
+                                df_o_clean["Project_Name"]
+                                .str.strip()
+                                .str.lower()
+                                == str(proj).strip().lower()
+                            )
+                            & (
+                                df_o_clean["Milestone_Name"]
+                                .str.strip()
+                                .str.lower()
+                                == str(ms).strip().lower()
+                            )
+                        )
+                    ]
+
+                    if override_toggle:
+                        new_o_row = pd.DataFrame(
+                            [
+                                {
+                                    "Project_Name": proj,
+                                    "Milestone_Name": ms,
+                                    "Is_Overridden": "TRUE",
+                                    "Override_Reason": override_reason_text,
+                                }
+                            ]
+                        )
+                        df_o_clean = pd.concat(
+                            [df_o_clean, new_o_row], ignore_index=True
+                        )
+
+                    conn.update(
+                        worksheet="Milestone_Overrides", data=df_o_clean
+                    )
+
+                    st.cache_data.clear()
+
+                    st.session_state["task_success_msg"] = (
+                        f"✅ Milestone **{ms}** override updated successfully!"
+                    )
+                    st.rerun()
+
+                except Exception as err:
+                    st.error(f"Error updating Milestone_Overrides sheet: {err}")

@@ -169,7 +169,7 @@ with st.sidebar:
 
 # Summary View (Enhanced Portfolio Overview)
 if mode == "Summary":
-    st.title("⚡ Portfolio Overview")
+    st.title("📃Portfolio Overview")
 
     # Get ordered list of stages
     if "Stage_Order" in df_milestones.columns:

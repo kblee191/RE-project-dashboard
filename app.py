@@ -251,13 +251,19 @@ elif mode == "Task Management":
 
     st.subheader("Add New Task")
 
-    with st.form("add_task_form"):
-        proj = st.selectbox("Project", df_projects["Project_Name"].unique())
-        stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
-        filtered_ms = df_milestones[df_milestones["Stage_Name"] == stage][
-            "Milestone_Name"
-        ].unique()
-        ms = st.selectbox("Milestone", filtered_ms)
+    # 1. Interactive Dropdowns placed outside st.form so selecting Stage instantly updates Milestones
+    proj = st.selectbox("Project", df_projects["Project_Name"].unique())
+    stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
+
+    # Dynamically filter milestones for the selected stage
+    filtered_ms = df_milestones[
+        df_milestones["Stage_Name"].str.strip() == str(stage).strip()
+    ]["Milestone_Name"].unique()
+
+    ms = st.selectbox("Milestone", filtered_ms)
+
+    # 2. Form for the remaining task details
+    with st.form("add_task_details_form"):
         desc = st.text_area("Task Description")
         assigned = st.text_input("Assigned To")
 

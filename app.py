@@ -248,7 +248,7 @@ elif mode == "Create New Project":
                     st.error(f"Error updating Projects sheet: {err}")
 
 # Task Management View
-elif mode == "Add & Manage Existing Tasks":
+elif mode == "Add & Manage Task":
     st.title("⚙️ Task Management")
 
     if "task_success_msg" in st.session_state:

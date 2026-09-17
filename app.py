@@ -15,7 +15,7 @@ st.markdown(
     <style>
     /* Reduce top padding gap in main content container */
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 2rem !important;
         padding-bottom: 2rem !important;
     }
 
@@ -71,18 +71,23 @@ if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 if not st.session_state["authenticated"]:
-    st.title("🔒 Renewable Energy Dashboard Login")
-    with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        if st.form_submit_button("Log In"):
-            valid_users = st.secrets.get("passwords", {})
-            if username in valid_users and valid_users[username] == password:
-                st.session_state["authenticated"] = True
-                st.session_state["username"] = username
-                st.rerun()
-            else:
-                st.error("Invalid Username or Password")
+    # Center and constrain the width of the login form using columns
+    _, login_col, _ = st.columns([1, 1.2, 1])
+
+    with login_col:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.title("🔒 RE Dashboard Login")
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            if st.form_submit_button("Log In"):
+                valid_users = st.secrets.get("passwords", {})
+                if username in valid_users and valid_users[username] == password:
+                    st.session_state["authenticated"] = True
+                    st.session_state["username"] = username
+                    st.rerun()
+                else:
+                    st.error("Invalid Username or Password")
     st.stop()
 
 # Data Connection

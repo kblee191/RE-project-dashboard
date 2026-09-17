@@ -179,7 +179,7 @@ with st.sidebar:
 
 # Summary View (Enhanced Portfolio Overview)
 if mode == "Summary":
-    st.title("⚡ Portfolio Overview")
+    st.title("📃Portfolio Overview")
 
     # Get ordered list of stages
     if "Stage_Order" in df_milestones.columns:
@@ -315,7 +315,7 @@ if mode == "Summary":
 
 # Project Tracking View
 elif mode == "Project Tracking":
-    st.title("🔍 Project Progress Tracking")
+    st.title("🔍Project Progress Tracking")
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
     proj_tasks = df_tasks[
@@ -435,7 +435,7 @@ elif mode == "Project Tracking":
 
 # Create New Project View
 elif mode == "Create New Project":
-    st.title("➕ Create New Project")
+    st.title("➕Create New Project")
 
     if "project_success_msg" in st.session_state:
         st.success(st.session_state.pop("project_success_msg"))
@@ -487,7 +487,7 @@ elif mode == "Create New Project":
 
 # Add & Manage Task View
 elif mode == "Add & Manage Task":
-    st.title("⚙️ Task Management")
+    st.title("⚙️Task Management")
 
     if "task_success_msg" in st.session_state:
         st.success(st.session_state.pop("task_success_msg"))

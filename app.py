@@ -9,10 +9,16 @@ st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
 )
 
-# Custom Yellow & Black Theme + Adaptive Light/Dark CSS Injection
+# Custom Yellow & Black Theme + Adaptive CSS + Padding Fix
 st.markdown(
     """
     <style>
+    /* Reduce top padding gap in main content container */
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 2rem !important;
+    }
+
     /* Configure Sidebar as vertical flexbox container */
     [data-testid="stSidebarUserContent"] {
         display: flex !important;

@@ -9,7 +9,7 @@ st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
 )
 
-# Custom Yellow & Black Theme + Sidebar Flex CSS Injection
+# Custom Yellow & Black Theme + Adaptive Light/Dark CSS Injection
 st.markdown(
     """
     <style>
@@ -39,14 +39,7 @@ st.markdown(
         color: #000000 !important;
     }
     
-    /* Input fields and containers styling */
-    .stTextInput>div>div>input, .stSelectbox>div>div, .stTextArea>div>div>textarea, .stDateInput>div>div>input {
-        background-color: #1A1A1A !important;
-        color: #FFFFFF !important;
-        border: 1px solid #333333 !important;
-    }
-    
-    /* Metric Card Styling */
+    /* Metric Card Value Accent */
     [data-testid="stMetricValue"] {
         color: #FFD700 !important;
     }
@@ -118,7 +111,7 @@ with st.sidebar:
         """
         <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 48px; line-height: 1;">⚡</span>
-            <div style="color: #FFD700; font-size: 24px; font-weight: 900; line-height: 1.15;">
+            <div style="font-size: 24px; font-weight: 900; line-height: 1.15;">
                 RE Project Dashboard
             </div>
         </div>
@@ -148,8 +141,7 @@ with st.sidebar:
                 "font-size": "14px",
                 "text-align": "left",
                 "margin": "4px 0px",
-                "color": "#FFFFFF",
-                "--hover-color": "#262626",
+                "--hover-color": "rgba(128, 128, 128, 0.15)",
             },
             "nav-link-selected": {
                 "background-color": "#FFD700",
@@ -169,7 +161,7 @@ with st.sidebar:
 
 # Summary View (Enhanced Portfolio Overview)
 if mode == "Summary":
-    st.title("📃Portfolio Overview")
+    st.title("⚡ Portfolio Overview")
 
     # Get ordered list of stages
     if "Stage_Order" in df_milestones.columns:

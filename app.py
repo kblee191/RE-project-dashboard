@@ -167,35 +167,160 @@ with st.sidebar:
         st.session_state["authenticated"] = False
         st.rerun()
 
-# Summary View
+# Summary View (Enhanced Portfolio Overview)
 if mode == "Summary":
     st.title("⚡ Portfolio Overview")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Active Projects", len(df_projects))
-    col2.metric("Total Tasks", len(df_tasks))
 
-    completed_count = 0
-    if "Status" in df_tasks.columns:
-        completed_count = len(
-            df_tasks[df_tasks["Status"].str.upper() == "COMPLETED"]
+    # Get ordered list of stages
+    if "Stage_Order" in df_milestones.columns:
+        ordered_stages = (
+            df_milestones.sort_values("Stage_Order")["Stage_Name"]
+            .unique()
+            .tolist()
         )
-    col3.metric("Completed Tasks", completed_count)
+    else:
+        ordered_stages = df_milestones["Stage_Name"].unique().tolist()
+
+    summary_rows = []
+    completed_projects_count = 0
+
+    for idx, p_row in df_projects.iterrows():
+        p_name = p_row.get("Project_Name", "")
+
+        # Filter tasks for current project
+        p_tasks = df_tasks[
+            df_tasks["Project_Name"].str.strip().str.lower()
+            == str(p_name).strip().lower()
+        ]
+
+        total_t = len(p_tasks)
+        completed_t = (
+            len(
+                p_tasks[
+                    p_tasks["Status"].str.strip().str.upper() == "COMPLETED"
+                ]
+            )
+            if total_t > 0
+            else 0
+        )
+        ongoing_t = (
+            len(
+                p_tasks[
+                    p_tasks["Status"].str.strip().str.upper() == "ON-GOING"
+                ]
+            )
+            if total_t > 0
+            else 0
+        )
+
+        # Calculate Hierarchical Completion Percentage & Current Stage
+        stage_percentages = []
+        current_stage = None
+
+        for stg in ordered_stages:
+            stg_ms = df_milestones[
+                df_milestones["Stage_Name"].str.strip() == str(stg).strip()
+            ]["Milestone_Name"].unique()
+
+            ms_percentages = []
+
+            for ms_name in stg_ms:
+                ms_tasks = p_tasks[
+                    p_tasks["Milestone_Name"].str.strip().str.lower()
+                    == str(ms_name).strip().lower()
+                ]
+                m_total = len(ms_tasks)
+                m_completed = (
+                    len(
+                        ms_tasks[
+                            ms_tasks["Status"].str.strip().str.upper()
+                            == "COMPLETED"
+                        ]
+                    )
+                    if m_total > 0
+                    else 0
+                )
+                m_pct = (m_completed / m_total * 100.0) if m_total > 0 else 0.0
+                ms_percentages.append(m_pct)
+
+            stg_pct = (
+                (sum(ms_percentages) / len(ms_percentages))
+                if ms_percentages
+                else 0.0
+            )
+            stage_percentages.append(stg_pct)
+
+            # Current stage is the first stage that is not 100% complete
+            if stg_pct < 100.0 and current_stage is None:
+                current_stage = stg
+
+        overall_pct = (
+            (sum(stage_percentages) / len(stage_percentages))
+            if stage_percentages
+            else 0.0
+        )
+
+        # Handle completed projects and stage assignment
+        if overall_pct >= 100.0 and total_t > 0:
+            completed_projects_count += 1
+            current_stage = "Completed"
+        elif current_stage is None:
+            current_stage = (
+                ordered_stages[0] if ordered_stages else "Not Started"
+            )
+
+        p_dict = p_row.to_dict()
+        p_dict["Current Stage"] = current_stage
+        p_dict["Total Tasks"] = total_t
+        p_dict["Completed Tasks"] = completed_t
+        p_dict["Ongoing Tasks"] = ongoing_t
+        p_dict["Completion %"] = round(overall_pct, 1)
+
+        summary_rows.append(p_dict)
+
+    df_summary = pd.DataFrame(summary_rows)
+
+    # Top Metrics Bar
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Active Projects", len(df_projects))
+    col2.metric("Completed Projects", completed_projects_count)
+    col3.metric("Total Tasks", len(df_tasks))
+
+    all_completed_tasks = (
+        len(df_tasks[df_tasks["Status"].str.strip().str.upper() == "COMPLETED"])
+        if "Status" in df_tasks.columns
+        else 0
+    )
+    col4.metric("Completed Tasks", all_completed_tasks)
 
     st.markdown("---")
-    st.dataframe(df_projects, use_container_width=True)
 
-# Project Tracking View (Hierarchical Task -> Milestone -> Stage -> Project Roll-Up)
+    # Interactive Summary Table
+    st.dataframe(
+        df_summary,
+        use_container_width=True,
+        column_config={
+            "Completion %": st.column_config.ProgressColumn(
+                "Completion %",
+                help="Overall project completion progress",
+                format="%.1f%%",
+                min_value=0,
+                max_value=100,
+            ),
+        },
+        hide_index=True,
+    )
+
+# Project Tracking View
 elif mode == "Project Tracking":
     st.title("🔍 Project Progress Tracking")
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
-    # Filter tasks for selected project
     proj_tasks = df_tasks[
         df_tasks["Project_Name"].str.strip().str.lower()
         == str(selected_proj).strip().lower()
     ]
 
-    # Retrieve unique stages from master sheet ordered appropriately
     if "Stage_Order" in df_milestones.columns:
         unique_stages = (
             df_milestones.sort_values("Stage_Order")["Stage_Name"]
@@ -205,7 +330,6 @@ elif mode == "Project Tracking":
     else:
         unique_stages = df_milestones["Stage_Name"].unique().tolist()
 
-    # Pre-calculate progress tree
     stage_data = {}
     stage_percentages = []
 
@@ -218,7 +342,6 @@ elif mode == "Project Tracking":
         ms_percentages = []
 
         for ms_name in stg_milestones:
-            # Get tasks matching project and milestone
             ms_tasks = proj_tasks[
                 proj_tasks["Milestone_Name"].str.strip().str.lower()
                 == str(ms_name).strip().lower()
@@ -261,12 +384,10 @@ elif mode == "Project Tracking":
         else 0.0
     )
 
-    # Top Level Project Banner
     st.markdown(f"### Overall Project Completion: **{overall_project_pct:.1f}%**")
     st.progress(overall_project_pct / 100.0)
     st.markdown("---")
 
-    # Render Stages and Milestones
     for stage_name, s_info in stage_data.items():
         stg_pct = s_info["pct"]
 
@@ -278,7 +399,6 @@ elif mode == "Project Tracking":
 
         st.progress(stg_pct / 100.0)
 
-        # Render Milestones under current stage
         for ms_name, m_info in s_info["milestones"].items():
             ms_pct = m_info["pct"]
             t_df = m_info["tasks"]
@@ -385,7 +505,6 @@ elif mode == "Add & Manage Task":
         ["➕ Add New Task", "📝 Update Task Status"]
     )
 
-    # TAB 1: ADD NEW TASK
     with tab_add:
         with st.form("add_task_details_form"):
             desc = st.text_area("Task Description")
@@ -442,7 +561,6 @@ elif mode == "Add & Manage Task":
                     except Exception as err:
                         st.error(f"Error updating sheet: {err}")
 
-    # TAB 2: UPDATE EXISTING TASK STATUS
     with tab_update:
         matching_tasks = df_tasks[
             (

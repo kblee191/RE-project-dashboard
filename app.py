@@ -91,6 +91,12 @@ def load_data():
             for col in df.select_dtypes(include="object").columns:
                 df[col] = df[col].astype(str).str.strip()
 
+    # Sort Projects alphabetically by Project_Name
+    if df_p is not None and not df_p.empty and "Project_Name" in df_p.columns:
+        df_p = df_p.sort_values(
+            by="Project_Name", key=lambda col: col.str.lower()
+        ).reset_index(drop=True)
+
     return df_p, df_m, df_t
 
 
@@ -99,6 +105,13 @@ try:
 except Exception as e:
     st.error(f"Failed to load data from Google Sheets: {e}")
     st.stop()
+
+# Helper function to get sorted list of project names
+sorted_project_list = (
+    sorted(df_projects["Project_Name"].unique(), key=lambda x: str(x).lower())
+    if "Project_Name" in df_projects.columns
+    else []
+)
 
 # Sidebar Navigation Header
 with st.sidebar:
@@ -179,9 +192,7 @@ if mode == "Executive Summary":
 # Project Deep-Dive View
 elif mode == "Project Deep-Dive":
     st.title("🔍 Project Deep-Dive & Task Updates")
-    selected_proj = st.selectbox(
-        "Select Project", df_projects["Project_Name"].unique()
-    )
+    selected_proj = st.selectbox("Select Project", sorted_project_list)
 
     p_tasks = df_tasks[
         df_tasks["Project_Name"].str.lower() == str(selected_proj).lower()
@@ -251,8 +262,8 @@ elif mode == "Task Management":
 
     st.subheader("Add New Task")
 
-    # 1. Interactive Dropdowns placed outside st.form so selecting Stage instantly updates Milestones
-    proj = st.selectbox("Project", df_projects["Project_Name"].unique())
+    # Interactive Dropdowns placed outside st.form so selecting Stage instantly updates Milestones
+    proj = st.selectbox("Project", sorted_project_list)
     stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
     # Dynamically filter milestones for the selected stage
@@ -262,7 +273,7 @@ elif mode == "Task Management":
 
     ms = st.selectbox("Milestone", filtered_ms)
 
-    # 2. Form for the remaining task details
+    # Form for the remaining task details
     with st.form("add_task_details_form"):
         desc = st.text_area("Task Description")
         assigned = st.text_input("Assigned To")

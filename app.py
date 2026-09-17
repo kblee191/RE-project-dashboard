@@ -102,9 +102,16 @@ except Exception as e:
 
 # Sidebar Navigation Header
 with st.sidebar:
-    # 1. Bold & Large Dashboard Title
+    # 1. Bold & Large Dashboard Title (Aligned Flexbox Layout)
     st.markdown(
-        "<h1 style='color: #FFD700; font-size: 26px; font-weight: 900; margin-bottom: 0px; line-height: 1.2;'>⚡ RE Project Dashboard</h1>",
+        """
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+            <span style="font-size: 24px; line-height: 1.2;">⚡</span>
+            <div style="color: #FFD700; font-size: 24px; font-weight: 900; line-height: 1.2;">
+                RE Project Dashboard
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
     st.markdown("---")

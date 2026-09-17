@@ -13,9 +13,9 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Reduce top padding gap in main content container */
+    /* Balanced top padding: removes big gap without clipping the running status widget */
     .block-container {
-        padding-top: 2rem !important;
+        padding-top: 3.5rem !important;
         padding-bottom: 2rem !important;
     }
 
@@ -76,7 +76,7 @@ if not st.session_state["authenticated"]:
 
     with login_col:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.title("🔒 RE Project Dashboard Login")
+        st.title("🔒 RE Dashboard Login")
         with st.form("login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")

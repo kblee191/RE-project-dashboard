@@ -71,14 +71,14 @@ if not st.session_state["authenticated"]:
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=2)
 def load_data():
-    df_p = conn.read(worksheet="Projects", ttl=5)
-    df_m = conn.read(worksheet="Milestones_Master", ttl=5)
-    df_t = conn.read(worksheet="Tasks", ttl=5)
+    df_p = conn.read(worksheet="Projects", ttl=0)
+    df_m = conn.read(worksheet="Milestones_Master", ttl=0)
+    df_t = conn.read(worksheet="Tasks", ttl=0)
 
     try:
-        df_o = conn.read(worksheet="Milestone_Overrides", ttl=5)
+        df_o = conn.read(worksheet="Milestone_Overrides", ttl=0)
     except Exception:
         df_o = pd.DataFrame(
             columns=[
@@ -89,10 +89,11 @@ def load_data():
             ]
         )
 
+    # Convert all columns (including Booleans) to sanitized string values
     for df in [df_p, df_m, df_t, df_o]:
         if df is not None and not df.empty:
-            df.columns = df.columns.astype(str).str.strip()
-            for col in df.select_dtypes(include=["object", "string"]).columns:
+            df.columns = [str(col).strip() for col in df.columns]
+            for col in df.columns:
                 df[col] = df[col].fillna("").astype(str).str.strip()
 
     return df_p, df_m, df_t, df_o
@@ -106,52 +107,36 @@ except Exception as e:
 
 
 def is_milestone_overridden(p_name, ms_name):
-    """Flexible helper to check if a milestone is overridden for a project."""
+    """Robust helper to check if a milestone is overridden for a project."""
     if df_overrides is None or df_overrides.empty:
         return False, ""
 
-    df_temp = df_overrides.copy()
-    df_temp.columns = [
-        str(col).lower().replace(" ", "").replace("_", "")
-        for col in df_temp.columns
-    ]
+    target_p = str(p_name).strip().lower()
+    target_ms = str(ms_name).strip().lower()
 
-    proj_col = next((c for c in df_temp.columns if "project" in c), None)
-    ms_col = next((c for c in df_temp.columns if "milestone" in c), None)
-    override_col = next(
-        (c for c in df_temp.columns if "override" in c and "reason" not in c),
-        None,
-    )
-    reason_col = next((c for c in df_temp.columns if "reason" in c), None)
+    for _, row in df_overrides.iterrows():
+        row_p = ""
+        row_ms = ""
+        row_override = ""
+        row_reason = ""
 
-    if not (proj_col and ms_col and override_col):
-        return False, ""
+        for col in df_overrides.columns:
+            col_clean = str(col).lower().replace(" ", "").replace("_", "")
+            val = str(row[col]).strip()
 
-    match = df_temp[
-        (
-            df_temp[proj_col].astype(str).str.strip().str.lower()
-            == str(p_name).strip().lower()
-        )
-        & (
-            df_temp[ms_col].astype(str).str.strip().str.lower()
-            == str(ms_name).strip().lower()
-        )
-        & (
-            df_temp[override_col]
-            .astype(str)
-            .str.strip()
-            .str.upper()
-            .isin(["TRUE", "1", "YES"])
-        )
-    ]
+            if "project" in col_clean:
+                row_p = val.lower()
+            elif "milestone" in col_clean:
+                row_ms = val.lower()
+            elif "override" in col_clean and "reason" not in col_clean:
+                row_override = val.upper()
+            elif "reason" in col_clean:
+                row_reason = val
 
-    if not match.empty:
-        reason = (
-            match.iloc[0].get(reason_col, "No reason provided")
-            if reason_col
-            else "No reason provided"
-        )
-        return True, str(reason)
+        if row_p == target_p and row_ms == target_ms:
+            if row_override in ["TRUE", "1", "YES", "T"]:
+                return True, row_reason if row_reason else "No reason provided"
+
     return False, ""
 
 
@@ -206,6 +191,10 @@ with st.sidebar:
             },
         },
     )
+
+    if st.button("🔄 Sync Google Sheets"):
+        st.cache_data.clear()
+        st.rerun()
 
     st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
     st.markdown("---")

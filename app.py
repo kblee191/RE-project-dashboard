@@ -125,10 +125,10 @@ with st.sidebar:
     mode = option_menu(
         menu_title="Navigation",
         options=[
-            "Executive Summary",
-            "Project Deep-Dive",
-            "New Project",
-            "Task Management",
+            "Summary",
+            "Project Tracking",
+            "Create New Project",
+            "Add & Manage Task",
         ],
         icons=["speedometer2", "search", "plus-circle", "check2-square"],
         menu_icon="compass",
@@ -163,7 +163,7 @@ with st.sidebar:
         st.rerun()
 
 # Executive Summary View
-if mode == "Executive Summary":
+if mode == "Summary":
     st.title("⚡ Portfolio Overview")
     col1, col2, col3 = st.columns(3)
     col1.metric("Active Projects", len(df_projects))
@@ -180,8 +180,8 @@ if mode == "Executive Summary":
     st.dataframe(df_projects, use_container_width=True)
 
 # Project Deep-Dive View
-elif mode == "Project Deep-Dive":
-    st.title("🔍 Project Deep-Dive & Task Updates")
+elif mode == "Project Tracking":
+    st.title("🔍 Project Completion & Task Updates")
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
     p_tasks = df_tasks[
@@ -194,8 +194,8 @@ elif mode == "Project Deep-Dive":
         st.info("No tasks recorded for this project yet.")
 
 # New Project Creation View
-elif mode == "New Project":
-    st.title("➕ Create New Project")
+elif mode == "Create New Project":
+    st.title("➕ Create a new project")
 
     if "project_success_msg" in st.session_state:
         st.success(st.session_state.pop("project_success_msg"))
@@ -248,7 +248,7 @@ elif mode == "New Project":
                     st.error(f"Error updating Projects sheet: {err}")
 
 # Task Management View
-elif mode == "Task Management":
+elif mode == "Add & Manage Existing Tasks":
     st.title("⚙️ Task Management")
 
     if "task_success_msg" in st.session_state:

@@ -161,6 +161,11 @@ elif mode == "Project Deep-Dive":
 # Management Portal View
 elif mode == "Management Portal":
     st.title("⚙️ Management Portal")
+
+    # Display persistent success banner post-reload
+    if "task_success_msg" in st.session_state:
+        st.success(st.session_state.pop("task_success_msg"))
+
     st.subheader("Add New Task")
 
     with st.form("add_task_form"):
@@ -177,7 +182,6 @@ elif mode == "Management Portal":
         desc = st.text_area("Task Description")
         assigned = st.text_input("Assigned To")
 
-        # Date Pickers
         col_start, col_due = st.columns(2)
         with col_start:
             start_date = st.date_input("Start Date")
@@ -218,8 +222,10 @@ elif mode == "Management Portal":
                     conn.update(worksheet="Tasks", data=updated_tasks)
 
                     st.cache_data.clear()
-                    st.success(
-                        f"Task {next_id} successfully saved to Google Sheets!"
+
+                    # Save confirmation statement to session state before rerun
+                    st.session_state["task_success_msg"] = (
+                        f"✅ Task **{next_id}** has been successfully assigned to **{assigned}** and submitted!"
                     )
                     st.rerun()
 

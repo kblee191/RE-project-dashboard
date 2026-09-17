@@ -50,6 +50,11 @@ st.markdown(
     [data-testid="stMetricValue"] {
         color: #FFD700 !important;
     }
+
+    /* Streamlit Progress Bar Styling */
+    .stProgress > div > div > div > div {
+        background-color: #FFD700 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -164,7 +169,7 @@ with st.sidebar:
 
 # Summary View
 if mode == "Summary":
-    st.title("📃Portfolio Overview")
+    st.title("⚡ Portfolio Overview")
     col1, col2, col3 = st.columns(3)
     col1.metric("Active Projects", len(df_projects))
     col2.metric("Total Tasks", len(df_tasks))
@@ -179,19 +184,132 @@ if mode == "Summary":
     st.markdown("---")
     st.dataframe(df_projects, use_container_width=True)
 
-# Project Tracking View
+# Project Tracking View (Hierarchical Task -> Milestone -> Stage -> Project Roll-Up)
 elif mode == "Project Tracking":
-    st.title("🔍 Track the Progress of a Project")
+    st.title("🔍 Project Progress Tracking")
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
-    p_tasks = df_tasks[
-        df_tasks["Project_Name"].str.lower() == str(selected_proj).lower()
+    # Filter tasks for selected project
+    proj_tasks = df_tasks[
+        df_tasks["Project_Name"].str.strip().str.lower()
+        == str(selected_proj).strip().lower()
     ]
 
-    if not p_tasks.empty:
-        st.dataframe(p_tasks, use_container_width=True)
+    # Retrieve unique stages from master sheet ordered appropriately
+    if "Stage_Order" in df_milestones.columns:
+        unique_stages = (
+            df_milestones.sort_values("Stage_Order")["Stage_Name"]
+            .unique()
+            .tolist()
+        )
     else:
-        st.info("No tasks recorded for this project yet.")
+        unique_stages = df_milestones["Stage_Name"].unique().tolist()
+
+    # Pre-calculate progress tree
+    stage_data = {}
+    stage_percentages = []
+
+    for stage_name in unique_stages:
+        stg_milestones = df_milestones[
+            df_milestones["Stage_Name"].str.strip() == str(stage_name).strip()
+        ]["Milestone_Name"].unique()
+
+        ms_data = {}
+        ms_percentages = []
+
+        for ms_name in stg_milestones:
+            # Get tasks matching project and milestone
+            ms_tasks = proj_tasks[
+                proj_tasks["Milestone_Name"].str.strip().str.lower()
+                == str(ms_name).strip().lower()
+            ]
+
+            total_t = len(ms_tasks)
+            completed_t = (
+                len(
+                    ms_tasks[
+                        ms_tasks["Status"].str.strip().str.upper()
+                        == "COMPLETED"
+                    ]
+                )
+                if total_t > 0
+                else 0
+            )
+
+            ms_pct = (completed_t / total_t * 100) if total_t > 0 else 0.0
+            ms_percentages.append(ms_pct)
+
+            ms_data[ms_name] = {
+                "pct": ms_pct,
+                "total": total_t,
+                "completed": completed_t,
+                "tasks": ms_tasks,
+            }
+
+        stg_pct = (
+            (sum(ms_percentages) / len(ms_percentages))
+            if ms_percentages
+            else 0.0
+        )
+        stage_percentages.append(stg_pct)
+
+        stage_data[stage_name] = {"pct": stg_pct, "milestones": ms_data}
+
+    overall_project_pct = (
+        (sum(stage_percentages) / len(stage_percentages))
+        if stage_percentages
+        else 0.0
+    )
+
+    # Top Level Project Banner
+    st.markdown(f"### Overall Project Completion: **{overall_project_pct:.1f}%**")
+    st.progress(overall_project_pct / 100.0)
+    st.markdown("---")
+
+    # Render Stages and Milestones
+    for stage_name, s_info in stage_data.items():
+        stg_pct = s_info["pct"]
+
+        col_stg_title, col_stg_val = st.columns([4, 1])
+        with col_stg_title:
+            st.markdown(f"#### 📌 {stage_name}")
+        with col_stg_val:
+            st.markdown(f"**{stg_pct:.1f}% Complete**")
+
+        st.progress(stg_pct / 100.0)
+
+        # Render Milestones under current stage
+        for ms_name, m_info in s_info["milestones"].items():
+            ms_pct = m_info["pct"]
+            t_df = m_info["tasks"]
+
+            expander_title = f"🎯 {ms_name} — {ms_pct:.0f}% ({m_info['completed']}/{m_info['total']} Tasks Completed)"
+
+            with st.expander(expander_title):
+                st.progress(ms_pct / 100.0)
+                if not t_df.empty:
+                    display_cols = [
+                        c
+                        for c in [
+                            "Task_ID",
+                            "Task_Description",
+                            "Assigned_To",
+                            "Start_Date",
+                            "Due_Date",
+                            "Status",
+                            "Risks_Issues_Remarks",
+                        ]
+                        if c in t_df.columns
+                    ]
+                    st.dataframe(
+                        t_df[display_cols],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.caption("No tasks created under this milestone yet.")
+
+        st.markdown("---")
 
 # Create New Project View
 elif mode == "Create New Project":
@@ -252,7 +370,6 @@ elif mode == "Add & Manage Task":
     if "task_success_msg" in st.session_state:
         st.success(st.session_state.pop("task_success_msg"))
 
-    # Shared Selection Dropdowns
     proj = st.selectbox("Project", sorted_project_dropdown)
     stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
@@ -264,12 +381,11 @@ elif mode == "Add & Manage Task":
 
     st.markdown("---")
 
-    # Tabs for adding a new task vs updating an existing task
     tab_add, tab_update = st.tabs(
         ["➕ Add New Task", "📝 Update Task Status"]
     )
 
-    # --- TAB 1: ADD NEW TASK ---
+    # TAB 1: ADD NEW TASK
     with tab_add:
         with st.form("add_task_details_form"):
             desc = st.text_area("Task Description")
@@ -326,9 +442,8 @@ elif mode == "Add & Manage Task":
                     except Exception as err:
                         st.error(f"Error updating sheet: {err}")
 
-    # --- TAB 2: UPDATE EXISTING TASK STATUS ---
+    # TAB 2: UPDATE EXISTING TASK STATUS
     with tab_update:
-        # Filter tasks matching current Project and Milestone
         matching_tasks = df_tasks[
             (
                 df_tasks["Project_Name"].str.strip().str.lower()
@@ -345,7 +460,6 @@ elif mode == "Add & Manage Task":
                 f"No tasks currently exist under **{ms}** for project **{proj}**."
             )
         else:
-            # Dropdown options formatted as: Task_ID - Description (Assigned To)
             task_options = {
                 f"{row['Task_ID']} - {row['Task_Description']} (Assigned to: {row['Assigned_To']})": row[
                     "Task_ID"
@@ -358,12 +472,10 @@ elif mode == "Add & Manage Task":
             )
             selected_task_id = task_options[selected_task_label]
 
-            # Fetch current details of selected task
             current_row = matching_tasks[
                 matching_tasks["Task_ID"] == selected_task_id
             ].iloc[0]
 
-            # Options matching Google Sheet Status choices
             status_choices = ["On-going", "Completed", "Cancelled"]
             current_status = current_row.get("Status", "On-going")
             status_index = (
@@ -385,7 +497,6 @@ elif mode == "Add & Manage Task":
 
                 if st.form_submit_button("Update Task Status"):
                     try:
-                        # Update df_tasks row
                         task_idx = df_tasks[
                             df_tasks["Task_ID"] == selected_task_id
                         ].index[0]

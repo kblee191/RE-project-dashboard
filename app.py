@@ -76,7 +76,7 @@ if not st.session_state["authenticated"]:
 
     with login_col:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.title("🔒 RE Dashboard Login")
+        st.title("🔒 RE Project Dashboard Login")
         with st.form("login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")

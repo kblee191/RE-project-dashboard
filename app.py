@@ -102,7 +102,7 @@ except Exception as e:
 
 # Sidebar Navigation Header
 with st.sidebar:
-    # 1. Bold & Large Dashboard Title (Icon scaled to 48px to match 2 lines of text)
+    # 1. Bold & Large Dashboard Title
     st.markdown(
         """
         <div style="display: flex; align-items: center; gap: 10px;">
@@ -119,8 +119,13 @@ with st.sidebar:
     # 2. Navigation Menu
     mode = option_menu(
         menu_title="Navigation",
-        options=["Executive Summary", "Project Deep-Dive", "Management Portal"],
-        icons=["speedometer2", "search", "gear"],
+        options=[
+            "Executive Summary",
+            "Project Deep-Dive",
+            "New Project",
+            "Task Management",
+        ],
+        icons=["speedometer2", "search", "plus-circle", "check2-square"],
         menu_icon="compass",
         default_index=0,
         styles={
@@ -156,7 +161,7 @@ with st.sidebar:
 
 # Executive Summary View
 if mode == "Executive Summary":
-    st.title("📒Portfolio Overview")
+    st.title("⚡ Portfolio Overview")
     col1, col2, col3 = st.columns(3)
     col1.metric("Active Projects", len(df_projects))
     col2.metric("Total Tasks", len(df_tasks))
@@ -187,26 +192,71 @@ elif mode == "Project Deep-Dive":
     else:
         st.info("No tasks recorded for this project yet.")
 
-# Management Portal View
-elif mode == "Management Portal":
-    st.title("⚙️ Management Portal")
+# New Project Creation View
+elif mode == "New Project":
+    st.title("➕ Create New Project")
 
-    # Display persistent success banner post-reload
+    if "project_success_msg" in st.session_state:
+        st.success(st.session_state.pop("project_success_msg"))
+
+    next_project_id = f"P{len(df_projects) + 1:03d}"
+
+    with st.form("add_project_form"):
+        st.text_input("Project ID", value=next_project_id, disabled=True)
+        proj_name = st.text_input("Project Name")
+        capacity = st.text_input("Capacity (e.g., 50 MWp)")
+        proj_lead = st.text_input("Project Lead")
+        target_date = st.date_input("Target Completion Date")
+
+        if st.form_submit_button("Create Project"):
+            if not proj_name or not capacity or not proj_lead:
+                st.warning("Please fill in all required fields.")
+            else:
+                try:
+                    new_project_row = pd.DataFrame(
+                        [
+                            {
+                                "Project_ID": next_project_id,
+                                "Project_Name": proj_name,
+                                "Capacity": capacity,
+                                "Project_Lead": proj_lead,
+                                "Target_Completion_Date": target_date.strftime(
+                                    "%d/%m/%Y"
+                                ),
+                            }
+                        ]
+                    )
+
+                    updated_projects = pd.concat(
+                        [df_projects, new_project_row], ignore_index=True
+                    )
+                    conn.update(worksheet="Projects", data=updated_projects)
+
+                    st.cache_data.clear()
+
+                    st.session_state["project_success_msg"] = (
+                        f"✅ Project **{proj_name}** (`{next_project_id}`) has been created successfully!"
+                    )
+                    st.rerun()
+
+                except Exception as err:
+                    st.error(f"Error updating Projects sheet: {err}")
+
+# Task Management View
+elif mode == "Task Management":
+    st.title("⚙️ Task Management")
+
     if "task_success_msg" in st.session_state:
         st.success(st.session_state.pop("task_success_msg"))
 
     st.subheader("Add New Task")
 
     with st.form("add_task_form"):
-        proj = st.selectbox(
-            "Project", df_projects["Project_Name"].unique()
-        )
-        stage = st.selectbox(
-            "Stage", df_milestones["Stage_Name"].unique()
-        )
-        filtered_ms = df_milestones[
-            df_milestones["Stage_Name"] == stage
-        ]["Milestone_Name"].unique()
+        proj = st.selectbox("Project", df_projects["Project_Name"].unique())
+        stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
+        filtered_ms = df_milestones[df_milestones["Stage_Name"] == stage][
+            "Milestone_Name"
+        ].unique()
         ms = st.selectbox("Milestone", filtered_ms)
         desc = st.text_area("Task Description")
         assigned = st.text_input("Assigned To")

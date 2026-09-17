@@ -2,10 +2,45 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
+from streamlit_option_menu import option_menu
 
 # Page Setup
 st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
+)
+
+# Custom Yellow & Black Theme CSS Injection
+st.markdown(
+    """
+    <style>
+    /* Primary buttons styling */
+    div.stButton > button {
+        background-color: #FFD700 !important;
+        color: #000000 !important;
+        font-weight: bold !important;
+        border-radius: 6px !important;
+        border: none !important;
+        width: 100%;
+    }
+    div.stButton > button:hover {
+        background-color: #E6C200 !important;
+        color: #000000 !important;
+    }
+    
+    /* Input fields and containers styling */
+    .stTextInput>div>div>input, .stSelectbox>div>div, .stTextArea>div>div>textarea {
+        background-color: #1A1A1A !important;
+        color: #FFFFFF !important;
+        border: 1px solid #333333 !important;
+    }
+    
+    /* Metric Card Styling */
+    [data-testid="stMetricValue"] {
+        color: #FFD700 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 # Login Check
@@ -37,7 +72,7 @@ def load_data():
     df_m = conn.read(worksheet="Milestones_Master", ttl=5)
     df_t = conn.read(worksheet="Tasks", ttl=5)
 
-    # Clean leading/trailing spaces from string columns to fix matching issues
+    # Clean leading/trailing spaces from string columns
     for df in [df_p, df_m, df_t]:
         if df is not None and not df.empty:
             df.columns = df.columns.str.strip()
@@ -53,23 +88,45 @@ except Exception as e:
     st.error(f"Failed to load data from Google Sheets: {e}")
     st.stop()
 
-# Navigation
-st.sidebar.title(f"👤 User: {st.session_state['username']}")
-if st.sidebar.button("Log Out"):
-    st.session_state["authenticated"] = False
-    st.rerun()
+# Sidebar Navigation Header
+with st.sidebar:
+    st.markdown(f"### 👤 User: `{st.session_state['username']}`")
+    if st.button("Log Out"):
+        st.session_state["authenticated"] = False
+        st.rerun()
 
-mode = st.sidebar.radio(
-    "Navigation",
-    [
-        "📊 Executive Summary",
-        "🔍 Project Deep-Dive & Tasks",
-        "⚙️ Management Portal",
-    ],
-)
+    st.markdown("---")
+
+    # Modern Sidebar Navigation Menu
+    mode = option_menu(
+        menu_title="Navigation",
+        options=["Executive Summary", "Project Deep-Dive", "Management Portal"],
+        icons=["speedometer2", "search", "gear"],
+        menu_icon="compass",
+        default_index=0,
+        styles={
+            "container": {
+                "padding": "0!important",
+                "background-color": "transparent",
+            },
+            "icon": {"color": "#FFD700", "font-size": "18px"},
+            "nav-link": {
+                "font-size": "14px",
+                "text-align": "left",
+                "margin": "4px 0px",
+                "color": "#FFFFFF",
+                "--hover-color": "#262626",
+            },
+            "nav-link-selected": {
+                "background-color": "#FFD700",
+                "color": "#000000",
+                "font-weight": "bold",
+            },
+        },
+    )
 
 # Executive Summary View
-if mode == "📊 Executive Summary":
+if mode == "Executive Summary":
     st.title("⚡ Portfolio Overview")
     col1, col2, col3 = st.columns(3)
     col1.metric("Active Projects", len(df_projects))
@@ -86,13 +143,12 @@ if mode == "📊 Executive Summary":
     st.dataframe(df_projects, use_container_width=True)
 
 # Project Deep-Dive View
-elif mode == "🔍 Project Deep-Dive & Tasks":
+elif mode == "Project Deep-Dive":
     st.title("🔍 Project Deep-Dive & Task Updates")
     selected_proj = st.selectbox(
         "Select Project", df_projects["Project_Name"].unique()
     )
 
-    # Filter tasks using cleaned string matching
     p_tasks = df_tasks[
         df_tasks["Project_Name"].str.lower() == str(selected_proj).lower()
     ]
@@ -103,7 +159,7 @@ elif mode == "🔍 Project Deep-Dive & Tasks":
         st.info("No tasks recorded for this project yet.")
 
 # Management Portal View
-elif mode == "⚙️ Management Portal":
+elif mode == "Management Portal":
     st.title("⚙️ Management Portal")
     st.subheader("Add New Task")
 
@@ -128,7 +184,6 @@ elif mode == "⚙️ Management Portal":
                 )
             else:
                 try:
-                    # Generate next Task ID (e.g., T004)
                     next_id = f"T{len(df_tasks) + 1:03d}"
 
                     new_row = pd.DataFrame(
@@ -148,7 +203,6 @@ elif mode == "⚙️ Management Portal":
                         ]
                     )
 
-                    # Append and update sheet
                     updated_tasks = pd.concat(
                         [df_tasks, new_row], ignore_index=True
                     )

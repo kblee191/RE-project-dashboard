@@ -8,7 +8,7 @@ st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
 )
 
-# Custom Yellow & Black Theme + Adaptive CSS + Native Radio Styling
+# Custom Yellow & Black Theme + Modern Sidebar Navigation Pill CSS
 st.markdown(
     """
     <style>
@@ -22,6 +22,8 @@ st.markdown(
         height: calc(100vh - 60px) !important;
     }
     .sidebar-spacer { flex-grow: 1 !important; }
+    
+    /* Global Yellow Button Styling */
     div.stButton > button {
         background-color: #FFD700 !important;
         color: #000000 !important;
@@ -37,24 +39,60 @@ st.markdown(
     [data-testid="stMetricValue"] { color: #FFD700 !important; }
     .stProgress > div > div > div > div { background-color: #FFD700 !important; }
     
-    /* Native Sidebar Radio Navigation Styling */
-    div[data-testid="stSidebar"] div.stRadio > div {
-        gap: 6px;
+    /* ========================================================= */
+    /* MODERN SIDEBAR NAVIGATION TABS (Hides Radio Circles)      */
+    /* ========================================================= */
+    
+    /* 1. Hide the radio circle dots completely */
+    [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stRadioButton"],
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > label > div:first-child {
+        display: none !important;
     }
-    div[data-testid="stSidebar"] div.stRadio label {
-        background-color: rgba(255, 255, 255, 0.05);
-        padding: 10px 14px;
-        border-radius: 6px;
-        font-weight: 600;
-        cursor: pointer;
-        width: 100%;
-        transition: all 0.2s ease;
+
+    /* 2. Stack radio items cleanly */
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] {
+        gap: 8px !important;
     }
-    div[data-testid="stSidebar"] div.stRadio label:hover {
-        background-color: rgba(255, 215, 0, 0.2) !important;
+
+    /* 3. Style individual items as modern pill tabs */
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > label {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        padding: 12px 16px !important;
+        border-radius: 8px !important;
+        cursor: pointer !important;
+        width: 100% !important;
+        margin: 0 !important;
+        transition: all 0.2s ease-in-out !important;
     }
-    div[data-testid="stSidebar"] div.stRadio [data-checked="true"] + div {
-        font-weight: bold !important;
+
+    /* 4. Hover state */
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > label:hover {
+        background-color: rgba(255, 215, 0, 0.15) !important;
+        border-color: #FFD700 !important;
+    }
+
+    /* 5. Active / Selected Tab */
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {
+        background-color: #FFD700 !important;
+        border-color: #FFD700 !important;
+        box-shadow: 0 4px 12px rgba(255, 215, 0, 0.25) !important;
+    }
+
+    /* 6. Active text inside tab */
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) * {
+        color: #000000 !important;
+        font-weight: 700 !important;
+    }
+
+    /* 7. Title Header for Navigation */
+    [data-testid="stSidebar"] [data-testid="stRadio"] > label {
+        font-size: 13px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        color: #A0A0A0 !important;
+        margin-bottom: 10px !important;
+        font-weight: 700 !important;
     }
     </style>
     """,
@@ -123,11 +161,10 @@ except Exception as e:
 
 
 def is_milestone_overridden(p_name, ms_name):
-    """Normalized check to match project and milestone override entries cleanly."""
+    """Robust helper to check if a milestone is overridden for a project."""
     if df_overrides is None or df_overrides.empty:
         return False, ""
 
-    # Strip out all whitespace and lowercase for exact character-level matching
     target_p = "".join(str(p_name).split()).lower()
     target_ms = "".join(str(ms_name).split()).lower()
 
@@ -144,7 +181,7 @@ def is_milestone_overridden(p_name, ms_name):
                 p_val = val
             elif "milestone" in c_norm:
                 ms_val = val
-            elif "override" in c_norm and "reason" not in c_norm:
+            elif ("override" in c_norm or "overrid" in c_norm) and "reason" not in c_norm:
                 override_val = val
             elif "reason" in c_norm:
                 reason_val = val
@@ -169,8 +206,8 @@ sorted_project_dropdown = (
 with st.sidebar:
     st.markdown(
         """
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <span style="font-size: 44px; line-height: 1;">⚡</span>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <span style="font-size: 40px; line-height: 1;">⚡</span>
             <div style="font-size: 22px; font-weight: 900; line-height: 1.15;">
                 RE Project Dashboard
             </div>

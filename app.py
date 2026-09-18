@@ -4,34 +4,27 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 from streamlit_option_menu import option_menu
 
-# Page Setup
+# ==========================================
+# 1. PAGE SETUP & THEMING
+# ==========================================
 st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
 )
 
-# Custom Yellow & Black Theme + Adaptive CSS + Padding Fix
 st.markdown(
     """
     <style>
-    /* Balanced top padding: removes big gap without clipping the running status widget */
     .block-container {
-        padding-top: 3.5rem !important;
+        padding-top: 3rem !important;
         padding-bottom: 2rem !important;
     }
-
-    /* Configure Sidebar as vertical flexbox container */
     [data-testid="stSidebarUserContent"] {
         display: flex !important;
         flex-direction: column !important;
         height: calc(100vh - 60px) !important;
     }
+    .sidebar-spacer { flex-grow: 1 !important; }
     
-    /* Spacer pushes elements below it to the bottom */
-    .sidebar-spacer {
-        flex-grow: 1 !important;
-    }
-
-    /* Primary buttons styling */
     div.stButton > button {
         background-color: #FFD700 !important;
         color: #000000 !important;
@@ -44,21 +37,10 @@ st.markdown(
         background-color: #E6C200 !important;
         color: #000000 !important;
     }
+    [data-testid="stMetricValue"] { color: #FFD700 !important; }
+    .stProgress > div > div > div > div { background-color: #FFD700 !important; }
     
-    /* Metric Card Value Accent */
-    [data-testid="stMetricValue"] {
-        color: #FFD700 !important;
-    }
-
-    /* Streamlit Progress Bar Styling */
-    .stProgress > div > div > div > div {
-        background-color: #FFD700 !important;
-    }
-
-    /* Fix selected menu item icon color so it is visible against yellow background */
-    .nav-link.active i, 
-    .nav-link-selected i,
-    [class*="nav-link"][class*="active"] i {
+    .nav-link.active i, .nav-link-selected i, [class*="nav-link"][class*="active"] i {
         color: #000000 !important;
     }
     </style>
@@ -66,14 +48,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Login Check
+# ==========================================
+# 2. AUTHENTICATION
+# ==========================================
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
 if not st.session_state["authenticated"]:
-    # Center and constrain the width of the login form using columns
     _, login_col, _ = st.columns([1, 1.2, 1])
-
     with login_col:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.title("🔒 RE Dashboard Login")
@@ -90,46 +72,181 @@ if not st.session_state["authenticated"]:
                     st.error("Invalid Username or Password")
     st.stop()
 
-# Data Connection
+# ==========================================
+# 3. DATA CONNECTION & LOADING
+# ==========================================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 
-@st.cache_data(ttl=5)
 def load_data():
-    df_p = conn.read(worksheet="Projects", ttl=5)
-    df_m = conn.read(worksheet="Milestones_Master", ttl=5)
-    df_t = conn.read(worksheet="Tasks", ttl=5)
+    df_p = conn.read(worksheet="Projects", ttl=0)
+    df_m = conn.read(worksheet="Milestones_Master", ttl=0)
+    df_t = conn.read(worksheet="Tasks", ttl=0)
 
-    # Clean leading/trailing spaces from string columns
-    for df in [df_p, df_m, df_t]:
+    try:
+        df_cfg = conn.read(worksheet="Project_Milestone_Config", ttl=0)
+    except Exception:
+        df_cfg = pd.DataFrame(
+            columns=[
+                "Project_Name",
+                "Stage_Name",
+                "Milestone_Name",
+                "Status",
+                "Notes_Reason",
+            ]
+        )
+
+    # Ensure clean string types across all dataframes
+    for df in [df_p, df_m, df_t, df_cfg]:
         if df is not None and not df.empty:
-            df.columns = df.columns.str.strip()
-            for col in df.select_dtypes(include="object").columns:
-                df[col] = df[col].astype(str).str.strip()
+            df.columns = [str(col).strip() for col in df.columns]
+            for col in df.columns:
+                df[col] = df[col].fillna("").astype(str).str.strip()
 
-    return df_p, df_m, df_t
+    return df_p, df_m, df_t, df_cfg
 
 
 try:
-    df_projects, df_milestones, df_tasks = load_data()
+    df_projects, df_milestones, df_tasks, df_configs = load_data()
 except Exception as e:
     st.error(f"Failed to load data from Google Sheets: {e}")
     st.stop()
 
-# Alphabetically sorted project list exclusively for dropdown selections
-sorted_project_dropdown = (
+sorted_projects = (
     sorted(df_projects["Project_Name"].unique(), key=lambda x: str(x).lower())
-    if "Project_Name" in df_projects.columns
+    if "Project_Name" in df_projects.columns and not df_projects.empty
     else []
 )
 
-# Sidebar Navigation Header
+# ==========================================
+# 4. PROGRESS CALCULATION ENGINE
+# ==========================================
+def calculate_project_metrics(p_name):
+    """Calculates completion percentages based on project milestone configuration."""
+    p_tasks = df_tasks[
+        df_tasks["Project_Name"].astype(str).str.strip().str.lower()
+        == str(p_name).strip().lower()
+    ]
+    p_configs = df_configs[
+        df_configs["Project_Name"].astype(str).str.strip().str.lower()
+        == str(p_name).strip().lower()
+    ]
+
+    if "Stage_Order" in df_milestones.columns:
+        ordered_stages = (
+            df_milestones.sort_values("Stage_Order")["Stage_Name"]
+            .unique()
+            .tolist()
+        )
+    else:
+        ordered_stages = df_milestones["Stage_Name"].unique().tolist()
+
+    stage_summary = {}
+    valid_stage_pcts = []
+    current_stage = None
+
+    for stg in ordered_stages:
+        stg_ms_master = df_milestones[
+            df_milestones["Stage_Name"].astype(str).str.strip() == str(stg).strip()
+        ]["Milestone_Name"].unique()
+
+        ms_summary = {}
+        applicable_ms_pcts = []
+
+        for ms_name in stg_ms_master:
+            # Check configuration override/status
+            cfg_row = p_configs[
+                p_configs["Milestone_Name"].astype(str).str.strip().str.lower()
+                == str(ms_name).strip().lower()
+            ]
+
+            status = "Active"
+            reason = ""
+            if not cfg_row.empty:
+                status = cfg_row.iloc[0].get("Status", "Active")
+                reason = cfg_row.iloc[0].get("Notes_Reason", "")
+
+            ms_tasks = p_tasks[
+                p_tasks["Milestone_Name"].astype(str).str.strip().str.lower()
+                == str(ms_name).strip().lower()
+            ]
+            t_total = len(ms_tasks)
+            t_completed = (
+                len(
+                    ms_tasks[
+                        ms_tasks["Status"].astype(str).str.strip().str.upper()
+                        == "COMPLETED"
+                    ]
+                )
+                if t_total > 0
+                else 0
+            )
+
+            # Calculation Logic
+            if status == "Excluded":
+                ms_pct = None  # Excluded from calculation
+            elif status == "Pre-Completed":
+                ms_pct = 100.0  # Explicitly completed
+            else:  # Active
+                ms_pct = (t_completed / t_total * 100.0) if t_total > 0 else 0.0
+
+            if ms_pct is not None:
+                applicable_ms_pcts.append(ms_pct)
+
+            ms_summary[ms_name] = {
+                "pct": ms_pct,
+                "status": status,
+                "reason": reason,
+                "total_tasks": t_total,
+                "completed_tasks": t_completed,
+                "tasks_df": ms_tasks,
+            }
+
+        stg_pct = (
+            (sum(applicable_ms_pcts) / len(applicable_ms_pcts))
+            if applicable_ms_pcts
+            else 100.0
+        )
+        valid_stage_pcts.append(stg_pct)
+
+        stage_summary[stg] = {"pct": stg_pct, "milestones": ms_summary}
+
+        if stg_pct < 100.0 and current_stage is None:
+            current_stage = stg
+
+    overall_pct = (
+        (sum(valid_stage_pcts) / len(valid_stage_pcts))
+        if valid_stage_pcts
+        else 0.0
+    )
+
+    if overall_pct >= 100.0:
+        current_stage = "Completed"
+    elif current_stage is None:
+        current_stage = ordered_stages[0] if ordered_stages else "Not Started"
+
+    return {
+        "overall_pct": overall_pct,
+        "current_stage": current_stage,
+        "stages": stage_summary,
+        "total_tasks": len(p_tasks),
+        "completed_tasks": len(
+            p_tasks[
+                p_tasks["Status"].astype(str).str.strip().str.upper() == "COMPLETED"
+            ]
+        ),
+    }
+
+
+# ==========================================
+# 5. NAVIGATION
+# ==========================================
 with st.sidebar:
     st.markdown(
         """
         <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 48px; line-height: 1;">⚡</span>
-            <div style="font-size: 24px; font-weight: 900; line-height: 1.15;">
+            <div style="font-size: 22px; font-weight: 900; line-height: 1.15;">
                 RE Project Dashboard
             </div>
         </div>
@@ -144,22 +261,19 @@ with st.sidebar:
             "Summary",
             "Project Tracking",
             "Create New Project",
+            "Configure Project Milestones",
             "Add & Manage Task",
         ],
-        icons=["speedometer2", "search", "plus-circle", "check2-square"],
+        icons=["speedometer2", "search", "plus-circle", "sliders", "check2-square"],
         menu_icon="compass",
         default_index=0,
         styles={
-            "container": {
-                "padding": "0!important",
-                "background-color": "transparent",
-            },
+            "container": {"padding": "0!important", "background-color": "transparent"},
             "icon": {"font-size": "18px"},
             "nav-link": {
                 "font-size": "14px",
                 "text-align": "left",
                 "margin": "4px 0px",
-                "--hover-color": "rgba(128, 128, 128, 0.15)",
             },
             "nav-link-selected": {
                 "background-color": "#FFD700",
@@ -170,366 +284,344 @@ with st.sidebar:
     )
 
     st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
-
     st.markdown("---")
     st.markdown(f"### 👤 User: `{st.session_state['username']}`")
     if st.button("Log Out"):
         st.session_state["authenticated"] = False
         st.rerun()
 
-# Summary View (Enhanced Portfolio Overview)
+# ==========================================
+# VIEW 1: SUMMARY
+# ==========================================
 if mode == "Summary":
-    st.title("📃Portfolio Overview")
-
-    # Get ordered list of stages
-    if "Stage_Order" in df_milestones.columns:
-        ordered_stages = (
-            df_milestones.sort_values("Stage_Order")["Stage_Name"]
-            .unique()
-            .tolist()
-        )
-    else:
-        ordered_stages = df_milestones["Stage_Name"].unique().tolist()
+    st.title("📃 Portfolio Overview")
 
     summary_rows = []
     completed_projects_count = 0
 
-    for idx, p_row in df_projects.iterrows():
+    for _, p_row in df_projects.iterrows():
         p_name = p_row.get("Project_Name", "")
+        metrics = calculate_project_metrics(p_name)
 
-        # Filter tasks for current project
-        p_tasks = df_tasks[
-            df_tasks["Project_Name"].str.strip().str.lower()
-            == str(p_name).strip().lower()
-        ]
-
-        total_t = len(p_tasks)
-        completed_t = (
-            len(
-                p_tasks[
-                    p_tasks["Status"].str.strip().str.upper() == "COMPLETED"
-                ]
-            )
-            if total_t > 0
-            else 0
-        )
-        ongoing_t = (
-            len(
-                p_tasks[
-                    p_tasks["Status"].str.strip().str.upper() == "ON-GOING"
-                ]
-            )
-            if total_t > 0
-            else 0
-        )
-
-        # Calculate Hierarchical Completion Percentage & Current Stage
-        stage_percentages = []
-        current_stage = None
-
-        for stg in ordered_stages:
-            stg_ms = df_milestones[
-                df_milestones["Stage_Name"].str.strip() == str(stg).strip()
-            ]["Milestone_Name"].unique()
-
-            ms_percentages = []
-
-            for ms_name in stg_ms:
-                ms_tasks = p_tasks[
-                    p_tasks["Milestone_Name"].str.strip().str.lower()
-                    == str(ms_name).strip().lower()
-                ]
-                m_total = len(ms_tasks)
-                m_completed = (
-                    len(
-                        ms_tasks[
-                            ms_tasks["Status"].str.strip().str.upper()
-                            == "COMPLETED"
-                        ]
-                    )
-                    if m_total > 0
-                    else 0
-                )
-                m_pct = (m_completed / m_total * 100.0) if m_total > 0 else 0.0
-                ms_percentages.append(m_pct)
-
-            stg_pct = (
-                (sum(ms_percentages) / len(ms_percentages))
-                if ms_percentages
-                else 0.0
-            )
-            stage_percentages.append(stg_pct)
-
-            # Current stage is the first stage that is not 100% complete
-            if stg_pct < 100.0 and current_stage is None:
-                current_stage = stg
-
-        overall_pct = (
-            (sum(stage_percentages) / len(stage_percentages))
-            if stage_percentages
-            else 0.0
-        )
-
-        # Handle completed projects and stage assignment
-        if overall_pct >= 100.0 and total_t > 0:
+        if metrics["current_stage"] == "Completed":
             completed_projects_count += 1
-            current_stage = "Completed"
-        elif current_stage is None:
-            current_stage = (
-                ordered_stages[0] if ordered_stages else "Not Started"
-            )
 
         p_dict = p_row.to_dict()
-        p_dict["Current Stage"] = current_stage
-        p_dict["Total Tasks"] = total_t
-        p_dict["Completed Tasks"] = completed_t
-        p_dict["Ongoing Tasks"] = ongoing_t
-        p_dict["Completion %"] = round(overall_pct, 1)
-
+        p_dict["Current Stage"] = metrics["current_stage"]
+        p_dict["Total Tasks"] = metrics["total_tasks"]
+        p_dict["Completed Tasks"] = metrics["completed_tasks"]
+        p_dict["Completion %"] = round(metrics["overall_pct"], 1)
         summary_rows.append(p_dict)
 
     df_summary = pd.DataFrame(summary_rows)
 
-    # Top Metrics Bar (Number of Projects & Completed Projects)
     col1, col2 = st.columns(2)
-    col1.metric("Number of Projects", len(df_projects))
-    col2.metric("Completed Projects", completed_projects_count)
+    col1.metric("Total Active Projects", len(df_projects))
+    col2.metric("Fully Completed Projects", completed_projects_count)
 
     st.markdown("---")
-
-    # Interactive Summary Table
     st.dataframe(
         df_summary,
         use_container_width=True,
         column_config={
             "Completion %": st.column_config.ProgressColumn(
-                "Completion %",
-                help="Overall project completion progress",
-                format="%.1f%%",
-                min_value=0,
-                max_value=100,
+                "Completion %", format="%.1f%%", min_value=0, max_value=100
             ),
         },
         hide_index=True,
     )
 
-# Project Tracking View
+# ==========================================
+# VIEW 2: PROJECT TRACKING
+# ==========================================
 elif mode == "Project Tracking":
-    st.title("🔍Project Progress Tracking")
-    selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
+    st.title("🔍 Detailed Project Tracking")
+    if not sorted_projects:
+        st.info("No projects created yet.")
+        st.stop()
 
-    proj_tasks = df_tasks[
-        df_tasks["Project_Name"].str.strip().str.lower()
-        == str(selected_proj).strip().lower()
+    selected_proj = st.selectbox("Select Project", sorted_projects)
+    metrics = calculate_project_metrics(selected_proj)
+
+    st.markdown(f"### Overall Completion: **{metrics['overall_pct']:.1f}%**")
+    st.progress(metrics["overall_pct"] / 100.0)
+    st.markdown("---")
+
+    for stg_name, s_info in metrics["stages"].items():
+        col_t, col_v = st.columns([4, 1])
+        col_t.markdown(f"#### 📌 {stg_name}")
+        col_v.markdown(f"**{s_info['pct']:.1f}% Complete**")
+        st.progress(s_info["pct"] / 100.0)
+
+        for ms_name, m_info in s_info["milestones"].items():
+            status = m_info["status"]
+            ms_pct = m_info["pct"]
+
+            if status == "Excluded":
+                expander_title = f"🎯 {ms_name} — 🚫 Excluded (N/A)"
+            elif status == "Pre-Completed":
+                expander_title = f"🎯 {ms_name} — ⚡ 100% (Pre-Completed / Overridden)"
+            else:
+                expander_title = f"🎯 {ms_name} — {ms_pct:.0f}% ({m_info['completed_tasks']}/{m_info['total_tasks']} Tasks Completed)"
+
+            with st.expander(expander_title):
+                if status == "Excluded":
+                    st.warning(
+                        f"**Milestone Excluded.** Reason/Note: {m_info['reason'] or 'Not applicable for this project.'}"
+                    )
+                elif status == "Pre-Completed":
+                    st.success(
+                        f"**Milestone Pre-Completed / Overridden.** Note: {m_info['reason'] or 'Completed prior to setup.'}"
+                    )
+                else:
+                    st.progress(ms_pct / 100.0)
+                    t_df = m_info["tasks_df"]
+                    if not t_df.empty:
+                        disp_cols = [
+                            c
+                            for c in [
+                                "Task_ID",
+                                "Task_Description",
+                                "Assigned_To",
+                                "Start_Date",
+                                "Due_Date",
+                                "Status",
+                                "Risks_Issues_Remarks",
+                            ]
+                            if c in t_df.columns
+                        ]
+                        st.dataframe(
+                            t_df[disp_cols], use_container_width=True, hide_index=True
+                        )
+                    else:
+                        st.caption("No tasks created under this milestone yet.")
+        st.markdown("---")
+
+# ==========================================
+# VIEW 3: CREATE NEW PROJECT
+# ==========================================
+elif mode == "Create New Project":
+    st.title("➕ Create New Project & Initial Milestone Setup")
+
+    if "proj_success" in st.session_state:
+        st.success(st.session_state.pop("proj_success"))
+
+    next_id = f"P{len(df_projects) + 1:03d}"
+
+    with st.form("create_project_wizard"):
+        st.subheader("1. Project Details")
+        p_name = st.text_input("Project Name")
+        capacity = st.text_input("Capacity (e.g., 50 MWp)")
+        p_lead = st.text_input("Project Lead")
+        target_date = st.date_input("Target Completion Date")
+
+        st.markdown("---")
+        st.subheader("2. Milestone Configuration (Excluded / Pre-Completed Setup)")
+        st.caption(
+            "Configure milestones for this project. Exclude N/A milestones, or mark pre-completed ones."
+        )
+
+        cfg_inputs = {}
+        for idx, m_row in df_milestones.iterrows():
+            stg = m_row["Stage_Name"]
+            ms = m_row["Milestone_Name"]
+
+            c1, c2, c3 = st.columns([2.5, 1.5, 2])
+            c1.markdown(f"**{ms}**<br><small>*{stg}*</small>", unsafe_allow_html=True)
+            status_val = c2.selectbox(
+                "Status",
+                ["Active", "Pre-Completed", "Excluded"],
+                key=f"init_st_{idx}",
+            )
+            reason_val = c3.text_input("Notes / Reason", key=f"init_rs_{idx}")
+
+            cfg_inputs[ms] = {
+                "stage": stg,
+                "status": status_val,
+                "reason": reason_val,
+            }
+
+        if st.form_submit_button("Create Project & Save Settings"):
+            if not p_name or not capacity or not p_lead:
+                st.warning("Please fill in all required project fields.")
+            else:
+                try:
+                    # Save Project Row
+                    new_p = pd.DataFrame(
+                        [
+                            {
+                                "Project_ID": next_id,
+                                "Project_Name": p_name,
+                                "Capacity": capacity,
+                                "Project_Lead": p_lead,
+                                "Target_Completion_Date": target_date.strftime(
+                                    "%d/%m/%Y"
+                                ),
+                            }
+                        ]
+                    )
+                    updated_p = pd.concat([df_projects, new_p], ignore_index=True)
+                    conn.update(worksheet="Projects", data=updated_p)
+
+                    # Save Config Rows
+                    cfg_rows = []
+                    for ms_name, ms_data in cfg_inputs.items():
+                        cfg_rows.append(
+                            {
+                                "Project_Name": p_name,
+                                "Stage_Name": ms_data["stage"],
+                                "Milestone_Name": ms_name,
+                                "Status": ms_data["status"],
+                                "Notes_Reason": ms_data["reason"],
+                            }
+                        )
+                    new_cfg_df = pd.DataFrame(cfg_rows)
+                    updated_cfg = pd.concat(
+                        [df_configs, new_cfg_df], ignore_index=True
+                    )
+                    conn.update(
+                        worksheet="Project_Milestone_Config", data=updated_cfg
+                    )
+
+                    st.session_state["proj_success"] = (
+                        f"✅ Project **{p_name}** (`{next_id}`) created successfully with custom milestone setup!"
+                    )
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Error saving project: {err}")
+
+# ==========================================
+# VIEW 4: CONFIGURE PROJECT MILESTONES
+# ==========================================
+elif mode == "Configure Project Milestones":
+    st.title("⚙️ Configure Project Milestone Setup")
+    if not sorted_projects:
+        st.info("No projects available.")
+        st.stop()
+
+    proj = st.selectbox("Select Project to Configure", sorted_projects)
+    st.caption("Update whether milestones are Active, Excluded (N/A), or Pre-Completed.")
+
+    p_configs = df_configs[
+        df_configs["Project_Name"].astype(str).str.strip().str.lower()
+        == str(proj).strip().lower()
     ]
 
-    if "Stage_Order" in df_milestones.columns:
-        unique_stages = (
-            df_milestones.sort_values("Stage_Order")["Stage_Name"]
-            .unique()
-            .tolist()
-        )
-    else:
-        unique_stages = df_milestones["Stage_Name"].unique().tolist()
+    with st.form("edit_milestone_config_form"):
+        updated_cfgs = {}
+        for idx, m_row in df_milestones.iterrows():
+            stg = m_row["Stage_Name"]
+            ms = m_row["Milestone_Name"]
 
-    stage_data = {}
-    stage_percentages = []
-
-    for stage_name in unique_stages:
-        stg_milestones = df_milestones[
-            df_milestones["Stage_Name"].str.strip() == str(stage_name).strip()
-        ]["Milestone_Name"].unique()
-
-        ms_data = {}
-        ms_percentages = []
-
-        for ms_name in stg_milestones:
-            ms_tasks = proj_tasks[
-                proj_tasks["Milestone_Name"].str.strip().str.lower()
-                == str(ms_name).strip().lower()
+            curr_cfg = p_configs[
+                p_configs["Milestone_Name"].astype(str).str.strip().str.lower()
+                == str(ms).strip().lower()
             ]
+            default_status = "Active"
+            default_reason = ""
 
-            total_t = len(ms_tasks)
-            completed_t = (
-                len(
-                    ms_tasks[
-                        ms_tasks["Status"].str.strip().str.upper()
-                        == "COMPLETED"
-                    ]
-                )
-                if total_t > 0
+            if not curr_cfg.empty:
+                default_status = curr_cfg.iloc[0].get("Status", "Active")
+                default_reason = curr_cfg.iloc[0].get("Notes_Reason", "")
+
+            status_opts = ["Active", "Pre-Completed", "Excluded"]
+            s_idx = (
+                status_opts.index(default_status)
+                if default_status in status_opts
                 else 0
             )
 
-            ms_pct = (completed_t / total_t * 100) if total_t > 0 else 0.0
-            ms_percentages.append(ms_pct)
+            c1, c2, c3 = st.columns([2.5, 1.5, 2])
+            c1.markdown(f"**{ms}**<br><small>*{stg}*</small>", unsafe_allow_html=True)
+            new_st = c2.selectbox(
+                "Status", status_opts, index=s_idx, key=f"edit_st_{idx}"
+            )
+            new_rs = c3.text_input("Notes / Reason", value=default_reason, key=f"edit_rs_{idx}")
 
-            ms_data[ms_name] = {
-                "pct": ms_pct,
-                "total": total_t,
-                "completed": completed_t,
-                "tasks": ms_tasks,
-            }
+            updated_cfgs[ms] = {"stage": stg, "status": new_st, "reason": new_rs}
 
-        stg_pct = (
-            (sum(ms_percentages) / len(ms_percentages))
-            if ms_percentages
-            else 0.0
-        )
-        stage_percentages.append(stg_pct)
+        if st.form_submit_button("Update Configuration"):
+            try:
+                # Remove old configs for project
+                clean_cfg = df_configs[
+                    df_configs["Project_Name"].astype(str).str.strip().str.lower()
+                    != str(proj).strip().lower()
+                ]
 
-        stage_data[stage_name] = {"pct": stg_pct, "milestones": ms_data}
-
-    overall_project_pct = (
-        (sum(stage_percentages) / len(stage_percentages))
-        if stage_percentages
-        else 0.0
-    )
-
-    st.markdown(f"### Overall Project Completion: **{overall_project_pct:.1f}%**")
-    st.progress(overall_project_pct / 100.0)
-    st.markdown("---")
-
-    for stage_name, s_info in stage_data.items():
-        stg_pct = s_info["pct"]
-
-        col_stg_title, col_stg_val = st.columns([4, 1])
-        with col_stg_title:
-            st.markdown(f"#### 📌 {stage_name}")
-        with col_stg_val:
-            st.markdown(f"**{stg_pct:.1f}% Complete**")
-
-        st.progress(stg_pct / 100.0)
-
-        for ms_name, m_info in s_info["milestones"].items():
-            ms_pct = m_info["pct"]
-            t_df = m_info["tasks"]
-
-            expander_title = f"🎯 {ms_name} — {ms_pct:.0f}% ({m_info['completed']}/{m_info['total']} Tasks Completed)"
-
-            with st.expander(expander_title):
-                st.progress(ms_pct / 100.0)
-                if not t_df.empty:
-                    display_cols = [
-                        c
-                        for c in [
-                            "Task_ID",
-                            "Task_Description",
-                            "Assigned_To",
-                            "Start_Date",
-                            "Due_Date",
-                            "Status",
-                            "Risks_Issues_Remarks",
-                        ]
-                        if c in t_df.columns
-                    ]
-                    st.dataframe(
-                        t_df[display_cols],
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-                else:
-                    st.caption("No tasks created under this milestone yet.")
-
-        st.markdown("---")
-
-# Create New Project View
-elif mode == "Create New Project":
-    st.title("➕Create New Project")
-
-    if "project_success_msg" in st.session_state:
-        st.success(st.session_state.pop("project_success_msg"))
-
-    next_project_id = f"P{len(df_projects) + 1:03d}"
-
-    date_col = next(
-        (c for c in df_projects.columns if "target" in c.lower()),
-        "Target_Completion_Date",
-    )
-
-    with st.form("add_project_form"):
-        st.text_input("Project ID", value=next_project_id, disabled=True)
-        proj_name = st.text_input("Project Name")
-        capacity = st.text_input("Capacity (e.g., 50 MWp)")
-        proj_lead = st.text_input("Project Lead")
-        target_date = st.date_input("Target Completion Date")
-
-        if st.form_submit_button("Create Project"):
-            if not proj_name or not capacity or not proj_lead:
-                st.warning("Please fill in all required fields.")
-            else:
-                try:
-                    new_project_dict = {
-                        "Project_ID": next_project_id,
-                        "Project_Name": proj_name,
-                        "Capacity": capacity,
-                        "Project_Lead": proj_lead,
-                        date_col: target_date.strftime("%d/%m/%Y"),
+                # Append updated configs
+                rows = [
+                    {
+                        "Project_Name": proj,
+                        "Stage_Name": data["stage"],
+                        "Milestone_Name": ms_k,
+                        "Status": data["status"],
+                        "Notes_Reason": data["reason"],
                     }
+                    for ms_k, data in updated_cfgs.items()
+                ]
 
-                    new_project_row = pd.DataFrame([new_project_dict])
+                updated_df = pd.concat([clean_cfg, pd.DataFrame(rows)], ignore_index=True)
+                conn.update(worksheet="Project_Milestone_Config", data=updated_df)
+                st.success(f"✅ Milestone configuration for **{proj}** updated!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error updating config: {e}")
 
-                    updated_projects = pd.concat(
-                        [df_projects, new_project_row], ignore_index=True
-                    )[df_projects.columns]
-
-                    conn.update(worksheet="Projects", data=updated_projects)
-
-                    st.cache_data.clear()
-
-                    st.session_state["project_success_msg"] = (
-                        f"✅ Project **{proj_name}** (`{next_project_id}`) has been created successfully!"
-                    )
-                    st.rerun()
-
-                except Exception as err:
-                    st.error(f"Error updating Projects sheet: {err}")
-
-# Add & Manage Task View
+# ==========================================
+# VIEW 5: ADD & MANAGE TASK
+# ==========================================
 elif mode == "Add & Manage Task":
-    st.title("⚙️Task Management")
+    st.title("⚙️ Task Management")
+    if not sorted_projects:
+        st.info("No projects available.")
+        st.stop()
 
-    if "task_success_msg" in st.session_state:
-        st.success(st.session_state.pop("task_success_msg"))
+    if "task_success" in st.session_state:
+        st.success(st.session_state.pop("task_success"))
 
-    proj = st.selectbox("Project", sorted_project_dropdown)
+    proj = st.selectbox("Project", sorted_projects)
     stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
     filtered_ms = df_milestones[
-        df_milestones["Stage_Name"].str.strip() == str(stage).strip()
+        df_milestones["Stage_Name"].astype(str).str.strip() == str(stage).strip()
     ]["Milestone_Name"].unique()
 
     ms = st.selectbox("Milestone", filtered_ms)
 
+    # Check status of selected milestone
+    curr_ms_cfg = df_configs[
+        (df_configs["Project_Name"].astype(str).str.strip().str.lower() == str(proj).strip().lower())
+        & (df_configs["Milestone_Name"].astype(str).str.strip().str.lower() == str(ms).strip().lower())
+    ]
+
+    ms_status = curr_ms_cfg.iloc[0].get("Status", "Active") if not curr_ms_cfg.empty else "Active"
+
+    if ms_status == "Excluded":
+        st.warning(f"⚠️ Milestone **{ms}** is set as **Excluded (N/A)** for this project.")
+    elif ms_status == "Pre-Completed":
+        st.info(f"⚡ Milestone **{ms}** is set as **Pre-Completed / Overridden**. Tasks are optional.")
+
     st.markdown("---")
 
-    tab_add, tab_update = st.tabs(
-        ["➕ Add New Task", "📝 Update Task Status"]
-    )
+    tab_add, tab_update = st.tabs(["➕ Add New Task", "📝 Update Task Status"])
 
     with tab_add:
-        with st.form("add_task_details_form"):
+        with st.form("add_task_form"):
             desc = st.text_area("Task Description")
             assigned = st.text_input("Assigned To")
-
-            col_start, col_due = st.columns(2)
-            with col_start:
-                start_date = st.date_input("Start Date")
-            with col_due:
-                due_date = st.date_input("Due Date")
+            col_s, col_d = st.columns(2)
+            s_date = col_s.date_input("Start Date")
+            d_date = col_d.date_input("Due Date")
 
             if st.form_submit_button("Submit Task"):
                 if not desc or not assigned:
-                    st.warning(
-                        "Please fill in both the Task Description and Assigned To fields."
-                    )
-                elif due_date < start_date:
-                    st.error("Due Date cannot be earlier than Start Date.")
+                    st.warning("Please fill in Description and Assigned To.")
+                elif d_date < s_date:
+                    st.error("Due Date cannot precede Start Date.")
                 else:
                     try:
                         next_id = f"T{len(df_tasks) + 1:03d}"
-
-                        new_row = pd.DataFrame(
+                        new_t = pd.DataFrame(
                             [
                                 {
                                     "Task_ID": next_id,
@@ -538,101 +630,55 @@ elif mode == "Add & Manage Task":
                                     "Milestone_Name": ms,
                                     "Task_Description": desc,
                                     "Assigned_To": assigned,
-                                    "Start_Date": start_date.strftime(
-                                        "%d/%m/%Y"
-                                    ),
-                                    "Due_Date": due_date.strftime("%d/%m/%Y"),
+                                    "Start_Date": s_date.strftime("%d/%m/%Y"),
+                                    "Due_Date": d_date.strftime("%d/%m/%Y"),
                                     "Status": "On-going",
                                     "Risks_Issues_Remarks": "",
                                 }
                             ]
                         )
-
-                        updated_tasks = pd.concat(
-                            [df_tasks, new_row], ignore_index=True
-                        )
-                        conn.update(worksheet="Tasks", data=updated_tasks)
-
-                        st.cache_data.clear()
-
-                        st.session_state["task_success_msg"] = (
-                            f"✅ Task **{next_id}** has been successfully created and assigned to **{assigned}**!"
-                        )
+                        updated_t = pd.concat([df_tasks, new_t], ignore_index=True)
+                        conn.update(worksheet="Tasks", data=updated_t)
+                        st.session_state["task_success"] = f"✅ Task **{next_id}** created!"
                         st.rerun()
-
                     except Exception as err:
-                        st.error(f"Error updating sheet: {err}")
+                        st.error(f"Error saving task: {err}")
 
     with tab_update:
         matching_tasks = df_tasks[
-            (
-                df_tasks["Project_Name"].str.strip().str.lower()
-                == str(proj).strip().lower()
-            )
-            & (
-                df_tasks["Milestone_Name"].str.strip().str.lower()
-                == str(ms).strip().lower()
-            )
+            (df_tasks["Project_Name"].astype(str).str.strip().str.lower() == str(proj).strip().lower())
+            & (df_tasks["Milestone_Name"].astype(str).str.strip().str.lower() == str(ms).strip().lower())
         ]
 
         if matching_tasks.empty:
-            st.info(
-                f"No tasks currently exist under **{ms}** for project **{proj}**."
-            )
+            st.info(f"No tasks under **{ms}** for project **{proj}**.")
         else:
             task_options = {
-                f"{row['Task_ID']} - {row['Task_Description']} (Assigned to: {row['Assigned_To']})": row[
-                    "Task_ID"
-                ]
-                for _, row in matching_tasks.iterrows()
+                f"{r['Task_ID']} - {r['Task_Description']} ({r['Assigned_To']})": r["Task_ID"]
+                for _, r in matching_tasks.iterrows()
             }
+            sel_label = st.selectbox("Select Task to Update", list(task_options.keys()))
+            sel_id = task_options[sel_label]
+            curr_row = matching_tasks[matching_tasks["Task_ID"] == sel_id].iloc[0]
 
-            selected_task_label = st.selectbox(
-                "Select Task to Update", list(task_options.keys())
-            )
-            selected_task_id = task_options[selected_task_label]
+            opts = ["On-going", "Completed", "Cancelled"]
+            curr_st = str(curr_row.get("Status", "On-going"))
+            idx = opts.index(curr_st) if curr_st in opts else 0
 
-            current_row = matching_tasks[
-                matching_tasks["Task_ID"] == selected_task_id
-            ].iloc[0]
-
-            status_choices = ["On-going", "Completed", "Cancelled"]
-            current_status = current_row.get("Status", "On-going")
-            status_index = (
-                status_choices.index(current_status)
-                if current_status in status_choices
-                else 0
-            )
-
-            with st.form("update_status_form"):
-                new_status = st.selectbox(
-                    "Task Status", status_choices, index=status_index
-                )
-                new_remarks = st.text_area(
-                    "Risks / Issues / Remarks",
-                    value=str(
-                        current_row.get("Risks_Issues_Remarks", "")
-                    ).replace("nan", ""),
+            with st.form("update_task_form"):
+                n_status = st.selectbox("Task Status", opts, index=idx)
+                n_remarks = st.text_area(
+                    "Risks / Remarks",
+                    value=str(curr_row.get("Risks_Issues_Remarks", "")).replace("nan", ""),
                 )
 
-                if st.form_submit_button("Update Task Status"):
+                if st.form_submit_button("Update Task"):
                     try:
-                        task_idx = df_tasks[
-                            df_tasks["Task_ID"] == selected_task_id
-                        ].index[0]
-                        df_tasks.loc[task_idx, "Status"] = new_status
-                        df_tasks.loc[task_idx, "Risks_Issues_Remarks"] = (
-                            new_remarks
-                        )
-
+                        t_idx = df_tasks[df_tasks["Task_ID"] == sel_id].index[0]
+                        df_tasks.loc[t_idx, "Status"] = n_status
+                        df_tasks.loc[t_idx, "Risks_Issues_Remarks"] = n_remarks
                         conn.update(worksheet="Tasks", data=df_tasks)
-
-                        st.cache_data.clear()
-
-                        st.session_state["task_success_msg"] = (
-                            f"✅ Task **{selected_task_id}** updated to **{new_status}**!"
-                        )
+                        st.session_state["task_success"] = f"✅ Task **{sel_id}** updated to {n_status}!"
                         st.rerun()
-
                     except Exception as err:
-                        st.error(f"Error updating task status: {err}")
+                        st.error(f"Error updating task: {err}")

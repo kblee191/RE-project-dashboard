@@ -37,7 +37,7 @@ st.markdown(
         background: #FFFFFF;
         border: 1px solid #E2E8F0;
         border-radius: 12px;
-        padding: 18px 20px;
+        padding: 16px 16px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
         margin-bottom: 12px;
         transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -47,7 +47,7 @@ st.markdown(
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
     }
     .kpi-title {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: 600;
         color: #64748B;
         text-transform: uppercase;
@@ -55,13 +55,13 @@ st.markdown(
         margin-bottom: 6px;
     }
     .kpi-value {
-        font-size: 1.85rem;
+        font-size: 1.7rem;
         font-weight: 800;
         color: #0F172A;
         line-height: 1.1;
     }
     .kpi-sub {
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         color: #10B981;
         font-weight: 600;
         margin-top: 4px;
@@ -111,14 +111,6 @@ st.markdown(
     .badge-completed {
         background-color: #FEF08A;
         color: #854D0E;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 0.78rem;
-        font-weight: 700;
-    }
-    .badge-excluded {
-        background-color: #F3F4F6;
-        color: #6B7280;
         padding: 3px 10px;
         border-radius: 12px;
         font-size: 0.78rem;
@@ -438,21 +430,26 @@ if mode == "Summary":
 
     summary_rows = []
     completed_projects_count = 0
-    total_capacity_mw = 0.0
+    total_target_capacity_mw = 0.0
+    total_installed_capacity_mw = 0.0
 
     for _, p_row in df_projects.iterrows():
         p_name = p_row.get("Project_Name", "")
         metrics = calculate_project_metrics(p_name)
 
-        if metrics["current_stage"] == "Completed":
+        is_completed = (metrics["current_stage"] == "Completed")
+        if is_completed:
             completed_projects_count += 1
 
-        # Calculate Capacity Number
         cap_str = str(p_row.get("Capacity", "0")).lower().replace("mwp", "").replace("mw", "").strip()
         try:
-            total_capacity_mw += float(cap_str)
+            cap_val = float(cap_str)
         except ValueError:
-            pass
+            cap_val = 0.0
+
+        total_target_capacity_mw += cap_val
+        if is_completed:
+            total_installed_capacity_mw += cap_val
 
         p_dict = p_row.to_dict()
         p_dict["Current Stage"] = metrics["current_stage"]
@@ -466,13 +463,13 @@ if mode == "Summary":
         df_summary["Completion %"].mean() if not df_summary.empty else 0.0
     )
 
-    # 1. KPI Metric Cards Row
-    k1, k2, k3, k4 = st.columns(4)
+    # 1. Executive KPI Cards Row (5 Columns)
+    k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-title">Total Active Projects</div>
+                <div class="kpi-title">Total Projects</div>
                 <div class="kpi-value">{len(df_projects)}</div>
                 <div class="kpi-sub">⚡ Active Portfolio</div>
             </div>
@@ -483,9 +480,9 @@ if mode == "Summary":
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-title">Total Capacity</div>
-                <div class="kpi-value">{total_capacity_mw:.0f} <span style="font-size:1rem; font-weight:600;">MWp</span></div>
-                <div class="kpi-sub">☀️ Installed & Target</div>
+                <div class="kpi-title">Target Capacity</div>
+                <div class="kpi-value">{total_target_capacity_mw:.0f} <span style="font-size:0.95rem; font-weight:600;">MWp</span></div>
+                <div class="kpi-sub">🎯 Total Pipeline</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -494,14 +491,25 @@ if mode == "Summary":
         st.markdown(
             f"""
             <div class="kpi-card">
-                <div class="kpi-title">Avg Portfolio Progress</div>
-                <div class="kpi-value">{avg_portfolio_completion:.1f}%</div>
-                <div class="kpi-sub">📈 Weighted Completion</div>
+                <div class="kpi-title">Installed Capacity</div>
+                <div class="kpi-value">{total_installed_capacity_mw:.0f} <span style="font-size:0.95rem; font-weight:600;">MWp</span></div>
+                <div class="kpi-sub">☀️ Fully Operational</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
     with k4:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Avg Progress</div>
+                <div class="kpi-value">{avg_portfolio_completion:.1f}%</div>
+                <div class="kpi-sub">📈 Portfolio Average</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with k5:
         st.markdown(
             f"""
             <div class="kpi-card">
@@ -515,51 +523,31 @@ if mode == "Summary":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 2. Interactive Plotly Visualizations
+    # 2. Clean Full-Width Project Progress Comparison
     if not df_summary.empty:
-        c_chart1, c_chart2 = st.columns([1.6, 1])
-
-        with c_chart1:
-            st.markdown("#### 📊 Project Progress Comparison")
-            fig_bar = px.bar(
-                df_summary,
-                x="Project_Name",
-                y="Completion %",
-                color="Current Stage",
-                text_auto=".1f",
-                hover_data=["Capacity", "Project_Lead"],
-                color_discrete_sequence=["#FFD700", "#0F172A", "#3B82F6", "#10B981"],
-            )
-            fig_bar.update_layout(
-                template="plotly_white",
-                xaxis_title="",
-                yaxis_title="Completion (%)",
-                yaxis_range=[0, 100],
-                margin=dict(l=20, r=20, t=20, b=20),
-                height=300,
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-        with c_chart2:
-            st.markdown("#### 🍩 Projects by Current Stage")
-            fig_donut = px.pie(
-                df_summary,
-                names="Current Stage",
-                hole=0.5,
-                color_discrete_sequence=["#FFD700", "#0F172A", "#3B82F6", "#10B981"],
-            )
-            fig_donut.update_layout(
-                template="plotly_white",
-                margin=dict(l=10, r=10, t=20, b=20),
-                height=300,
-                showlegend=True,
-            )
-            st.plotly_chart(fig_donut, use_container_width=True)
+        st.markdown("#### 📊 Project Progress Comparison")
+        fig_bar = px.bar(
+            df_summary,
+            x="Project_Name",
+            y="Completion %",
+            color="Current Stage",
+            text_auto=".1f",
+            hover_data=["Capacity", "Project_Lead"],
+            color_discrete_sequence=["#FFD700", "#0F172A", "#3B82F6", "#10B981"],
+        )
+        fig_bar.update_layout(
+            template="plotly_white",
+            xaxis_title="",
+            yaxis_title="Completion (%)",
+            yaxis_range=[0, 100],
+            margin=dict(l=20, r=20, t=20, b=20),
+            height=320,
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
 
     st.markdown("---")
     st.markdown("#### 📋 Detailed Projects Summary Table")
 
-    # Rename columns for presentation
     disp_rename = {
         "Project_ID": "Project ID",
         "Project_Name": "Project Name",
@@ -596,7 +584,6 @@ elif mode == "Project Tracking":
     selected_proj = st.selectbox("Select Project to Inspect", sorted_projects)
     metrics = calculate_project_metrics(selected_proj)
 
-    # Fetch project details for Header Banner
     p_row = df_projects[
         df_projects["Project_Name"].astype(str).str.strip().str.lower()
         == str(selected_proj).strip().lower()
@@ -605,7 +592,6 @@ elif mode == "Project Tracking":
     p_cap = p_row.iloc[0].get("Capacity", "N/A") if not p_row.empty else "N/A"
     p_target = p_row.iloc[0].get("Target_Completion_Date", "N/A") if not p_row.empty else "N/A"
 
-    # Executive Project Header Banner
     st.markdown(
         f"""
         <div class="info-banner">
@@ -640,7 +626,6 @@ elif mode == "Project Tracking":
     st.progress(metrics["overall_pct"] / 100.0)
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Render Stages and Milestones
     for stg_name, s_info in metrics["stages"].items():
         stg_pct = s_info["pct"]
 

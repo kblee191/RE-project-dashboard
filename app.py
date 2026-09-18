@@ -463,7 +463,7 @@ if mode == "Summary":
         df_summary["Completion %"].mean() if not df_summary.empty else 0.0
     )
 
-    # 1. Executive KPI Cards Row (5 Columns)
+    # Executive KPI Cards Row
     k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
         st.markdown(
@@ -523,7 +523,6 @@ if mode == "Summary":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 2. Clean Full-Width Project Progress Comparison
     if not df_summary.empty:
         st.markdown("#### 📊 Project Progress Comparison")
         fig_bar = px.bar(
@@ -726,9 +725,9 @@ elif mode == "Create New Project":
                 status_val = col_status.selectbox(
                     "Status",
                     ["Active", "Pre-Completed", "Excluded"],
-                    key=f"init_st_{idx}",
+                    key=f"init_st_{idx}_{ms}",
                 )
-                reason_val = col_reason.text_input("Notes / Reason", key=f"init_rs_{idx}")
+                reason_val = col_reason.text_input("Notes / Reason", key=f"init_rs_{idx}_{ms}")
 
                 std_cfg_inputs[ms] = {
                     "stage": stage_name,
@@ -878,10 +877,19 @@ elif mode == "Configure Project Milestones":
 
                 col1, col2, col3 = st.columns([3, 1.5, 2.5])
                 col1.markdown(f"**{ms}**{c_tag}")
+                
+                # Dynamic keys tied to selected project & milestone name
                 new_st = col2.selectbox(
-                    "Status", status_opts, index=s_idx, key=f"edit_st_{idx}"
+                    "Status", 
+                    status_opts, 
+                    index=s_idx, 
+                    key=f"edit_st_{proj}_{ms}"
                 )
-                new_rs = col3.text_input("Notes / Reason", value=default_reason, key=f"edit_rs_{idx}")
+                new_rs = col3.text_input(
+                    "Notes / Reason", 
+                    value=default_reason, 
+                    key=f"edit_rs_{proj}_{ms}"
+                )
 
                 updated_cfgs[ms] = {"stage": stage_name, "status": new_st, "reason": new_rs}
 

@@ -11,13 +11,27 @@ st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
 )
 
+# Custom Yellow & Black Theme + Adaptive CSS + Running Widget Fix
 st.markdown(
     """
     <style>
+    /* Balanced top padding: gives breathing room so page titles aren't overlapped */
     .block-container {
-        padding-top: 3rem !important;
+        padding-top: 4.8rem !important;
         padding-bottom: 2rem !important;
     }
+
+    /* Position the Streamlit top header and status widget higher up */
+    [data-testid="stHeader"] {
+        background-color: transparent !important;
+        z-index: 100 !important;
+    }
+
+    [data-testid="stStatusWidget"] {
+        top: 0.5rem !important;
+    }
+
+    /* Configure Sidebar as vertical flexbox container */
     [data-testid="stSidebarUserContent"] {
         display: flex !important;
         flex-direction: column !important;
@@ -25,6 +39,7 @@ st.markdown(
     }
     .sidebar-spacer { flex-grow: 1 !important; }
     
+    /* Primary buttons styling */
     div.stButton > button {
         background-color: #FFD700 !important;
         color: #000000 !important;
@@ -37,9 +52,14 @@ st.markdown(
         background-color: #E6C200 !important;
         color: #000000 !important;
     }
+    
+    /* Metric Card Value Accent */
     [data-testid="stMetricValue"] { color: #FFD700 !important; }
+    
+    /* Streamlit Progress Bar Styling */
     .stProgress > div > div > div > div { background-color: #FFD700 !important; }
     
+    /* Fix selected menu item icon color */
     .nav-link.active i, .nav-link-selected i, [class*="nav-link"][class*="active"] i {
         color: #000000 !important;
     }

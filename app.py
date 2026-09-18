@@ -96,7 +96,7 @@ def load_data():
             ]
         )
 
-    # Ensure clean string types across all dataframes
+    # Clean string types across all dataframes
     for df in [df_p, df_m, df_t, df_cfg]:
         if df is not None and not df.empty:
             df.columns = [str(col).strip() for col in df.columns]
@@ -122,7 +122,7 @@ sorted_projects = (
 # 4. PROGRESS CALCULATION ENGINE
 # ==========================================
 def calculate_project_metrics(p_name):
-    """Calculates completion percentages based on project milestone configuration."""
+    """Calculates completion percentages based on master + custom milestones."""
     p_tasks = df_tasks[
         df_tasks["Project_Name"].astype(str).str.strip().str.lower()
         == str(p_name).strip().lower()
@@ -148,13 +148,24 @@ def calculate_project_metrics(p_name):
     for stg in ordered_stages:
         stg_ms_master = df_milestones[
             df_milestones["Stage_Name"].astype(str).str.strip() == str(stg).strip()
-        ]["Milestone_Name"].unique()
+        ]["Milestone_Name"].unique().tolist()
+
+        # Combine master milestones with custom milestones in p_configs for this stage
+        p_stg_cfgs = p_configs[
+            p_configs["Stage_Name"].astype(str).str.strip().str.lower()
+            == str(stg).strip().lower()
+        ]
+
+        stg_ms_all = list(stg_ms_master)
+        for _, cfg_r in p_stg_cfgs.iterrows():
+            m_n = cfg_r.get("Milestone_Name", "").strip()
+            if m_n and m_n.lower() not in [x.lower() for x in stg_ms_all]:
+                stg_ms_all.append(m_n)
 
         ms_summary = {}
         applicable_ms_pcts = []
 
-        for ms_name in stg_ms_master:
-            # Check configuration override/status
+        for ms_name in stg_ms_all:
             cfg_row = p_configs[
                 p_configs["Milestone_Name"].astype(str).str.strip().str.lower()
                 == str(ms_name).strip().lower()
@@ -200,6 +211,7 @@ def calculate_project_metrics(p_name):
                 "total_tasks": t_total,
                 "completed_tasks": t_completed,
                 "tasks_df": ms_tasks,
+                "is_custom": ms_name not in stg_ms_master,
             }
 
         stg_pct = (
@@ -356,13 +368,14 @@ elif mode == "Project Tracking":
         for ms_name, m_info in s_info["milestones"].items():
             status = m_info["status"]
             ms_pct = m_info["pct"]
+            custom_tag = " (⚡ Custom Milestone)" if m_info.get("is_custom") else ""
 
             if status == "Excluded":
-                expander_title = f"🎯 {ms_name} — 🚫 Excluded (N/A)"
+                expander_title = f"🎯 {ms_name}{custom_tag} — 🚫 Excluded (N/A)"
             elif status == "Pre-Completed":
-                expander_title = f"🎯 {ms_name} — ⚡ 100% (Pre-Completed / Overridden)"
+                expander_title = f"🎯 {ms_name}{custom_tag} — ⚡ 100% (Pre-Completed / Overridden)"
             else:
-                expander_title = f"🎯 {ms_name} — {ms_pct:.0f}% ({m_info['completed_tasks']}/{m_info['total_tasks']} Tasks Completed)"
+                expander_title = f"🎯 {ms_name}{custom_tag} — {ms_pct:.0f}% ({m_info['completed_tasks']}/{m_info['total_tasks']} Tasks Completed)"
 
             with st.expander(expander_title):
                 if status == "Excluded":
@@ -401,94 +414,136 @@ elif mode == "Project Tracking":
 # VIEW 3: CREATE NEW PROJECT
 # ==========================================
 elif mode == "Create New Project":
-    st.title("➕ Create New Project & Initial Milestone Setup")
+    st.title("➕ Create New Project")
 
     if "proj_success" in st.session_state:
         st.success(st.session_state.pop("proj_success"))
 
+    if "temp_custom_milestones" not in st.session_state:
+        st.session_state["temp_custom_milestones"] = []
+
     next_id = f"P{len(df_projects) + 1:03d}"
 
-    with st.form("create_project_wizard"):
-        st.subheader("1. Project Details")
-        p_name = st.text_input("Project Name")
-        capacity = st.text_input("Capacity (e.g., 50 MWp)")
-        p_lead = st.text_input("Project Lead")
-        target_date = st.date_input("Target Completion Date")
+    st.subheader("1. Project Details")
+    p_name = st.text_input("Project Name")
+    capacity = st.text_input("Capacity (e.g., 50 MWp)")
+    p_lead = st.text_input("Project Lead")
+    target_date = st.date_input("Target Completion Date")
 
-        st.markdown("---")
-        st.subheader("2. Milestone Configuration (Excluded / Pre-Completed Setup)")
-        st.caption(
-            "Configure milestones for this project. Exclude N/A milestones, or mark pre-completed ones."
+    st.markdown("---")
+    st.subheader("2. Milestone Configuration (Standard Master Milestones)")
+    st.caption("Set status for standard milestones (Active, Pre-Completed, or Excluded).")
+
+    # Standard Milestones Form
+    std_cfg_inputs = {}
+    for idx, m_row in df_milestones.iterrows():
+        stg = m_row["Stage_Name"]
+        ms = m_row["Milestone_Name"]
+
+        c1, c2, c3 = st.columns([2.5, 1.5, 2])
+        c1.markdown(f"**{ms}**<br><small>*{stg}*</small>", unsafe_allow_html=True)
+        status_val = c2.selectbox(
+            "Status",
+            ["Active", "Pre-Completed", "Excluded"],
+            key=f"init_st_{idx}",
         )
+        reason_val = c3.text_input("Notes / Reason", key=f"init_rs_{idx}")
 
-        cfg_inputs = {}
-        for idx, m_row in df_milestones.iterrows():
-            stg = m_row["Stage_Name"]
-            ms = m_row["Milestone_Name"]
+        std_cfg_inputs[ms] = {
+            "stage": stg,
+            "status": status_val,
+            "reason": reason_val,
+        }
 
-            c1, c2, c3 = st.columns([2.5, 1.5, 2])
-            c1.markdown(f"**{ms}**<br><small>*{stg}*</small>", unsafe_allow_html=True)
-            status_val = c2.selectbox(
-                "Status",
-                ["Active", "Pre-Completed", "Excluded"],
-                key=f"init_st_{idx}",
-            )
-            reason_val = c3.text_input("Notes / Reason", key=f"init_rs_{idx}")
+    st.markdown("---")
+    st.subheader("3. Add Custom Milestones (Optional)")
+    st.caption("Need a custom milestone specific to this project?")
 
-            cfg_inputs[ms] = {
-                "stage": stg,
-                "status": status_val,
-                "reason": reason_val,
-            }
+    with st.expander("➕ Add Custom Milestone"):
+        c_stage = st.selectbox("Stage for Custom Milestone", df_milestones["Stage_Name"].unique())
+        c_name = st.text_input("Custom Milestone Name")
+        c_status = st.selectbox("Status", ["Active", "Pre-Completed", "Excluded"], key="c_st_sel")
+        c_reason = st.text_input("Notes / Reason for Custom Milestone", key="c_rs_in")
 
-        if st.form_submit_button("Create Project & Save Settings"):
-            if not p_name or not capacity or not p_lead:
-                st.warning("Please fill in all required project fields.")
+        if st.button("Add Custom Milestone to Setup"):
+            if not c_name.strip():
+                st.warning("Please enter a custom milestone name.")
             else:
-                try:
-                    # Save Project Row
-                    new_p = pd.DataFrame(
-                        [
-                            {
-                                "Project_ID": next_id,
-                                "Project_Name": p_name,
-                                "Capacity": capacity,
-                                "Project_Lead": p_lead,
-                                "Target_Completion_Date": target_date.strftime(
-                                    "%d/%m/%Y"
-                                ),
-                            }
-                        ]
-                    )
-                    updated_p = pd.concat([df_projects, new_p], ignore_index=True)
-                    conn.update(worksheet="Projects", data=updated_p)
+                st.session_state["temp_custom_milestones"].append(
+                    {
+                        "Stage_Name": c_stage,
+                        "Milestone_Name": c_name.strip(),
+                        "Status": c_status,
+                        "Notes_Reason": c_reason,
+                    }
+                )
+                st.success(f"Added custom milestone: **{c_name}** under **{c_stage}**!")
 
-                    # Save Config Rows
-                    cfg_rows = []
-                    for ms_name, ms_data in cfg_inputs.items():
-                        cfg_rows.append(
-                            {
-                                "Project_Name": p_name,
-                                "Stage_Name": ms_data["stage"],
-                                "Milestone_Name": ms_name,
-                                "Status": ms_data["status"],
-                                "Notes_Reason": ms_data["reason"],
-                            }
-                        )
-                    new_cfg_df = pd.DataFrame(cfg_rows)
-                    updated_cfg = pd.concat(
-                        [df_configs, new_cfg_df], ignore_index=True
-                    )
-                    conn.update(
-                        worksheet="Project_Milestone_Config", data=updated_cfg
+    if st.session_state["temp_custom_milestones"]:
+        st.markdown("#### Currently Added Custom Milestones:")
+        st.dataframe(pd.DataFrame(st.session_state["temp_custom_milestones"]), use_container_width=True)
+        if st.button("Clear Custom Milestones"):
+            st.session_state["temp_custom_milestones"] = []
+            st.rerun()
+
+    st.markdown("---")
+    if st.button("🚀 Create Project & Save Complete Setup", type="primary"):
+        if not p_name or not capacity or not p_lead:
+            st.warning("Please fill in all required project fields.")
+        else:
+            try:
+                # Save Project Metadata
+                new_p = pd.DataFrame(
+                    [
+                        {
+                            "Project_ID": next_id,
+                            "Project_Name": p_name,
+                            "Capacity": capacity,
+                            "Project_Lead": p_lead,
+                            "Target_Completion_Date": target_date.strftime("%d/%m/%Y"),
+                        }
+                    ]
+                )
+                updated_p = pd.concat([df_projects, new_p], ignore_index=True)
+                conn.update(worksheet="Projects", data=updated_p)
+
+                # Collect Standard Config Rows
+                cfg_rows = []
+                for ms_name, ms_data in std_cfg_inputs.items():
+                    cfg_rows.append(
+                        {
+                            "Project_Name": p_name,
+                            "Stage_Name": ms_data["stage"],
+                            "Milestone_Name": ms_name,
+                            "Status": ms_data["status"],
+                            "Notes_Reason": ms_data["reason"],
+                        }
                     )
 
-                    st.session_state["proj_success"] = (
-                        f"✅ Project **{p_name}** (`{next_id}`) created successfully with custom milestone setup!"
+                # Collect Custom Config Rows
+                for c_item in st.session_state["temp_custom_milestones"]:
+                    cfg_rows.append(
+                        {
+                            "Project_Name": p_name,
+                            "Stage_Name": c_item["Stage_Name"],
+                            "Milestone_Name": c_item["Milestone_Name"],
+                            "Status": c_item["Status"],
+                            "Notes_Reason": c_item["Notes_Reason"],
+                        }
                     )
-                    st.rerun()
-                except Exception as err:
-                    st.error(f"Error saving project: {err}")
+
+                new_cfg_df = pd.DataFrame(cfg_rows)
+                updated_cfg = pd.concat([df_configs, new_cfg_df], ignore_index=True)
+                conn.update(worksheet="Project_Milestone_Config", data=updated_cfg)
+
+                # Clear temporary session state
+                st.session_state["temp_custom_milestones"] = []
+                st.session_state["proj_success"] = (
+                    f"✅ Project **{p_name}** (`{next_id}`) created successfully!"
+                )
+                st.rerun()
+            except Exception as err:
+                st.error(f"Error saving project: {err}")
 
 # ==========================================
 # VIEW 4: CONFIGURE PROJECT MILESTONES
@@ -500,16 +555,28 @@ elif mode == "Configure Project Milestones":
         st.stop()
 
     proj = st.selectbox("Select Project to Configure", sorted_projects)
-    st.caption("Update whether milestones are Active, Excluded (N/A), or Pre-Completed.")
+    st.caption("Update milestone settings or add custom milestones for this project.")
 
     p_configs = df_configs[
         df_configs["Project_Name"].astype(str).str.strip().str.lower()
         == str(proj).strip().lower()
     ]
 
+    # Get master milestones + any existing custom milestones for this project
+    stg_ms_master = df_milestones[["Stage_Name", "Milestone_Name"]].drop_duplicates()
+    
+    # Custom milestones already in config for this project
+    custom_cfgs = p_configs[
+        ~p_configs["Milestone_Name"].astype(str).str.strip().str.lower().isin(
+            df_milestones["Milestone_Name"].astype(str).str.strip().str.lower()
+        )
+    ][["Stage_Name", "Milestone_Name"]].drop_duplicates()
+
+    all_proj_ms = pd.concat([stg_ms_master, custom_cfgs], ignore_index=True)
+
     with st.form("edit_milestone_config_form"):
         updated_cfgs = {}
-        for idx, m_row in df_milestones.iterrows():
+        for idx, m_row in all_proj_ms.iterrows():
             stg = m_row["Stage_Name"]
             ms = m_row["Milestone_Name"]
 
@@ -531,8 +598,11 @@ elif mode == "Configure Project Milestones":
                 else 0
             )
 
+            is_custom = ms not in df_milestones["Milestone_Name"].values
+            c_tag = " (⚡ Custom)" if is_custom else ""
+
             c1, c2, c3 = st.columns([2.5, 1.5, 2])
-            c1.markdown(f"**{ms}**<br><small>*{stg}*</small>", unsafe_allow_html=True)
+            c1.markdown(f"**{ms}**{c_tag}<br><small>*{stg}*</small>", unsafe_allow_html=True)
             new_st = c2.selectbox(
                 "Status", status_opts, index=s_idx, key=f"edit_st_{idx}"
             )
@@ -540,9 +610,9 @@ elif mode == "Configure Project Milestones":
 
             updated_cfgs[ms] = {"stage": stg, "status": new_st, "reason": new_rs}
 
-        if st.form_submit_button("Update Configuration"):
+        if st.form_submit_button("Save Milestone Configurations"):
             try:
-                # Remove old configs for project
+                # Remove existing configs for project
                 clean_cfg = df_configs[
                     df_configs["Project_Name"].astype(str).str.strip().str.lower()
                     != str(proj).strip().lower()
@@ -567,6 +637,37 @@ elif mode == "Configure Project Milestones":
             except Exception as e:
                 st.error(f"Error updating config: {e}")
 
+    st.markdown("---")
+    st.subheader("➕ Add a New Custom Milestone to this Project")
+    with st.form("add_new_custom_ms_form"):
+        add_stg = st.selectbox("Stage", df_milestones["Stage_Name"].unique(), key="add_c_stg")
+        add_ms_name = st.text_input("Custom Milestone Name", key="add_c_name")
+        add_status = st.selectbox("Status", ["Active", "Pre-Completed", "Excluded"], key="add_c_stat")
+        add_reason = st.text_input("Notes / Reason", key="add_c_reas")
+
+        if st.form_submit_button("Add Custom Milestone"):
+            if not add_ms_name.strip():
+                st.warning("Please enter a custom milestone name.")
+            else:
+                try:
+                    new_cfg_row = pd.DataFrame(
+                        [
+                            {
+                                "Project_Name": proj,
+                                "Stage_Name": add_stg,
+                                "Milestone_Name": add_ms_name.strip(),
+                                "Status": add_status,
+                                "Notes_Reason": add_reason,
+                            }
+                        ]
+                    )
+                    updated_cfg_df = pd.concat([df_configs, new_cfg_row], ignore_index=True)
+                    conn.update(worksheet="Project_Milestone_Config", data=updated_cfg_df)
+                    st.success(f"✅ Added custom milestone **{add_ms_name}** to **{proj}**!")
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Error adding custom milestone: {err}")
+
 # ==========================================
 # VIEW 5: ADD & MANAGE TASK
 # ==========================================
@@ -582,11 +683,24 @@ elif mode == "Add & Manage Task":
     proj = st.selectbox("Project", sorted_projects)
     stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
-    filtered_ms = df_milestones[
+    # Get standard master milestones for stage
+    master_ms = df_milestones[
         df_milestones["Stage_Name"].astype(str).str.strip() == str(stage).strip()
-    ]["Milestone_Name"].unique()
+    ]["Milestone_Name"].unique().tolist()
 
-    ms = st.selectbox("Milestone", filtered_ms)
+    # Get custom milestones for project & stage
+    proj_stage_cfgs = df_configs[
+        (df_configs["Project_Name"].astype(str).str.strip().str.lower() == str(proj).strip().lower())
+        & (df_configs["Stage_Name"].astype(str).str.strip().str.lower() == str(stage).strip().lower())
+    ]["Milestone_Name"].unique().tolist()
+
+    # Combine lists
+    combined_ms = list(master_ms)
+    for m in proj_stage_cfgs:
+        if m.lower() not in [x.lower() for x in combined_ms]:
+            combined_ms.append(m)
+
+    ms = st.selectbox("Milestone", combined_ms)
 
     # Check status of selected milestone
     curr_ms_cfg = df_configs[

@@ -5,22 +5,24 @@ from streamlit_gsheets import GSheetsConnection
 from streamlit_option_menu import option_menu
 
 # ==========================================
-# 1. PAGE SETUP & THEMING
+# 1. PAGE SETUP & MODERN CSS THEMING
 # ==========================================
 st.set_page_config(
-    page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
+    page_title="Renewable Energy Dashboard",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown(
     """
     <style>
-    /* Balanced top padding: gives breathing room so page titles aren't overlapped */
+    /* Balanced top padding so header widgets don't overlap titles */
     .block-container {
-        padding-top: 4.8rem !important;
-        padding-bottom: 2rem !important;
+        padding-top: 4.5rem !important;
+        padding-bottom: 3rem !important;
     }
 
-    /* Position the Streamlit top header and status widget higher up */
     [data-testid="stHeader"] {
         background-color: transparent !important;
         z-index: 100 !important;
@@ -30,43 +32,128 @@ st.markdown(
         top: 0.5rem !important;
     }
 
-    /* Configure Sidebar as vertical flexbox container */
+    /* Executive KPI Card Design */
+    .kpi-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 18px 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        margin-bottom: 12px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+    }
+    .kpi-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #64748B;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 6px;
+    }
+    .kpi-value {
+        font-size: 1.85rem;
+        font-weight: 800;
+        color: #0F172A;
+        line-height: 1.1;
+    }
+    .kpi-sub {
+        font-size: 0.8rem;
+        color: #10B981;
+        font-weight: 600;
+        margin-top: 4px;
+    }
+
+    /* Info Banner Header Card */
+    .info-banner {
+        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+        color: #FFFFFF;
+        border-radius: 12px;
+        padding: 20px 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+    }
+    .info-banner-title {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #FFD700;
+        margin-bottom: 12px;
+    }
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+    }
+    .info-item-label {
+        font-size: 0.75rem;
+        color: #94A3B8;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+    .info-item-val {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #F8FAFC;
+    }
+
+    /* Status Pill Badges */
+    .badge-active {
+        background-color: #DEF7EC;
+        color: #03543F;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+    .badge-completed {
+        background-color: #FEF08A;
+        color: #854D0E;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+    .badge-excluded {
+        background-color: #F3F4F6;
+        color: #6B7280;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+
+    /* Primary buttons styling */
+    div.stButton > button {
+        background-color: #FFD700 !important;
+        color: #000000 !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        border: none !important;
+        padding: 8px 16px !important;
+        transition: all 0.2s ease !important;
+    }
+    div.stButton > button:hover {
+        background-color: #E6C200 !important;
+        box-shadow: 0 4px 10px rgba(255, 215, 0, 0.4) !important;
+    }
+
+    /* Sidebar flexbox setup */
     [data-testid="stSidebarUserContent"] {
         display: flex !important;
         flex-direction: column !important;
         height: calc(100vh - 60px) !important;
     }
     .sidebar-spacer { flex-grow: 1 !important; }
-    
-    /* Primary buttons styling */
-    div.stButton > button {
-        background-color: #FFD700 !important;
-        color: #000000 !important;
-        font-weight: bold !important;
-        border-radius: 6px !important;
-        border: none !important;
-        width: 100%;
-    }
-    div.stButton > button:hover {
-        background-color: #E6C200 !important;
-        color: #000000 !important;
-    }
-    
-    /* Metric Card Value Accent */
-    [data-testid="stMetricValue"] { color: #FFD700 !important; }
-    
-    /* Streamlit Progress Bar Styling */
+
+    /* Streamlit Progress Bar Colors */
     .stProgress > div > div > div > div { background-color: #FFD700 !important; }
-    
-    /* Fix selected menu item icon color */
+
+    /* Active navigation icon fix */
     .nav-link.active i, .nav-link-selected i, [class*="nav-link"][class*="active"] i {
         color: #000000 !important;
-    }
-    
-    /* Clean Expander Header Styling */
-    .st-expanderHeader {
-        font-weight: bold !important;
-        font-size: 1.05rem !important;
     }
     </style>
     """,
@@ -98,7 +185,7 @@ if not st.session_state["authenticated"]:
     st.stop()
 
 # ==========================================
-# 3. DATA CONNECTION & SMART CACHED LOADING
+# 3. DATA CONNECTION & CACHED LOAD
 # ==========================================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
@@ -123,7 +210,6 @@ def load_data():
             ]
         )
 
-    # Clean string types across all dataframes
     for df in [df_p, df_m, df_t, df_cfg]:
         if df is not None and not df.empty:
             df.columns = [str(col).strip() for col in df.columns]
@@ -152,7 +238,6 @@ sorted_projects = (
 # 4. PROGRESS CALCULATION ENGINE
 # ==========================================
 def calculate_project_metrics(p_name):
-    """Calculates completion percentages based on master + custom milestones."""
     p_tasks = df_tasks[
         df_tasks["Project_Name"].astype(str).str.strip().str.lower()
         == str(p_name).strip().lower()
@@ -180,7 +265,6 @@ def calculate_project_metrics(p_name):
             df_milestones["Stage_Name"].astype(str).str.strip() == str(stg).strip()
         ]["Milestone_Name"].unique().tolist()
 
-        # Combine master milestones with custom milestones in p_configs for this stage
         p_stg_cfgs = p_configs[
             p_configs["Stage_Name"].astype(str).str.strip().str.lower()
             == str(stg).strip().lower()
@@ -223,12 +307,11 @@ def calculate_project_metrics(p_name):
                 else 0
             )
 
-            # Calculation Logic
             if status == "Excluded":
-                ms_pct = None  # Excluded from calculation
+                ms_pct = None
             elif status == "Pre-Completed":
-                ms_pct = 100.0  # Explicitly completed
-            else:  # Active
+                ms_pct = 100.0
+            else:
                 ms_pct = (t_completed / t_total * 100.0) if t_total > 0 else 0.0
 
             if ms_pct is not None:
@@ -281,15 +364,20 @@ def calculate_project_metrics(p_name):
 
 
 # ==========================================
-# 5. NAVIGATION
+# 5. NAVIGATION SIDEBAR
 # ==========================================
 with st.sidebar:
     st.markdown(
         """
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 48px; line-height: 1;">⚡</span>
-            <div style="font-size: 22px; font-weight: 900; line-height: 1.15;">
-                RE Project Dashboard
+        <div style="display: flex; align-items: center; gap: 12px; padding: 4px 0;">
+            <span style="font-size: 42px; line-height: 1;">⚡</span>
+            <div>
+                <div style="font-size: 20px; font-weight: 800; color: #0F172A; line-height: 1.1;">
+                    RE Dashboard
+                </div>
+                <div style="font-size: 12px; color: #64748B; font-weight: 600;">
+                    Portfolio Tracker
+                </div>
             </div>
         </div>
         """,
@@ -298,7 +386,7 @@ with st.sidebar:
     st.markdown("---")
 
     mode = option_menu(
-        menu_title="Navigation",
+        menu_title=None,
         options=[
             "Summary",
             "Project Tracking",
@@ -307,15 +395,16 @@ with st.sidebar:
             "Add & Manage Task",
         ],
         icons=["speedometer2", "search", "plus-circle", "sliders", "check2-square"],
-        menu_icon="compass",
+        menu_icon=None,
         default_index=0,
         styles={
             "container": {"padding": "0!important", "background-color": "transparent"},
-            "icon": {"font-size": "18px"},
+            "icon": {"font-size": "17px"},
             "nav-link": {
                 "font-size": "14px",
                 "text-align": "left",
                 "margin": "4px 0px",
+                "border-radius": "8px",
             },
             "nav-link-selected": {
                 "background-color": "#FFD700",
@@ -327,19 +416,29 @@ with st.sidebar:
 
     st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
     st.markdown("---")
-    st.markdown(f"### 👤 User: `{st.session_state['username']}`")
+    st.markdown(
+        f"""
+        <div style="background: #F1F5F9; padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+            <div style="font-size: 12px; color: #64748B; font-weight: 600;">LOGGED IN USER</div>
+            <div style="font-size: 15px; color: #0F172A; font-weight: 800;">👤 {st.session_state['username']}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     if st.button("Log Out"):
         st.session_state["authenticated"] = False
         st.rerun()
 
 # ==========================================
-# VIEW 1: SUMMARY
+# VIEW 1: SUMMARY (PORTFOLIO OVERVIEW)
 # ==========================================
 if mode == "Summary":
-    st.title("📃 Portfolio Overview")
+    st.markdown("## 📃 Portfolio Overview")
+    st.caption("Real-time executive summary and progress across all renewable energy projects.")
 
     summary_rows = []
     completed_projects_count = 0
+    total_capacity_mw = 0.0
 
     for _, p_row in df_projects.iterrows():
         p_name = p_row.get("Project_Name", "")
@@ -347,6 +446,13 @@ if mode == "Summary":
 
         if metrics["current_stage"] == "Completed":
             completed_projects_count += 1
+
+        # Calculate Capacity Number
+        cap_str = str(p_row.get("Capacity", "0")).lower().replace("mwp", "").replace("mw", "").strip()
+        try:
+            total_capacity_mw += float(cap_str)
+        except ValueError:
+            pass
 
         p_dict = p_row.to_dict()
         p_dict["Current Stage"] = metrics["current_stage"]
@@ -356,14 +462,119 @@ if mode == "Summary":
         summary_rows.append(p_dict)
 
     df_summary = pd.DataFrame(summary_rows)
+    avg_portfolio_completion = (
+        df_summary["Completion %"].mean() if not df_summary.empty else 0.0
+    )
 
-    col1, col2 = st.columns(2)
-    col1.metric("Total Active Projects", len(df_projects))
-    col2.metric("Fully Completed Projects", completed_projects_count)
+    # 1. KPI Metric Cards Row
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Total Active Projects</div>
+                <div class="kpi-value">{len(df_projects)}</div>
+                <div class="kpi-sub">⚡ Active Portfolio</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with k2:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Total Capacity</div>
+                <div class="kpi-value">{total_capacity_mw:.0f} <span style="font-size:1rem; font-weight:600;">MWp</span></div>
+                <div class="kpi-sub">☀️ Installed & Target</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with k3:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Avg Portfolio Progress</div>
+                <div class="kpi-value">{avg_portfolio_completion:.1f}%</div>
+                <div class="kpi-sub">📈 Weighted Completion</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with k4:
+        st.markdown(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-title">Fully Completed</div>
+                <div class="kpi-value">{completed_projects_count}</div>
+                <div class="kpi-sub">🎉 Operational Projects</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 2. Interactive Plotly Visualizations
+    if not df_summary.empty:
+        c_chart1, c_chart2 = st.columns([1.6, 1])
+
+        with c_chart1:
+            st.markdown("#### 📊 Project Progress Comparison")
+            fig_bar = px.bar(
+                df_summary,
+                x="Project_Name",
+                y="Completion %",
+                color="Current Stage",
+                text_auto=".1f",
+                hover_data=["Capacity", "Project_Lead"],
+                color_discrete_sequence=["#FFD700", "#0F172A", "#3B82F6", "#10B981"],
+            )
+            fig_bar.update_layout(
+                template="plotly_white",
+                xaxis_title="",
+                yaxis_title="Completion (%)",
+                yaxis_range=[0, 100],
+                margin=dict(l=20, r=20, t=20, b=20),
+                height=300,
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        with c_chart2:
+            st.markdown("#### 🍩 Projects by Current Stage")
+            fig_donut = px.pie(
+                df_summary,
+                names="Current Stage",
+                hole=0.5,
+                color_discrete_sequence=["#FFD700", "#0F172A", "#3B82F6", "#10B981"],
+            )
+            fig_donut.update_layout(
+                template="plotly_white",
+                margin=dict(l=10, r=10, t=20, b=20),
+                height=300,
+                showlegend=True,
+            )
+            st.plotly_chart(fig_donut, use_container_width=True)
 
     st.markdown("---")
+    st.markdown("#### 📋 Detailed Projects Summary Table")
+
+    # Rename columns for presentation
+    disp_rename = {
+        "Project_ID": "Project ID",
+        "Project_Name": "Project Name",
+        "Capacity": "Capacity",
+        "Project_Lead": "Project Lead",
+        "Target_Completion_Date": "Target Completion Date",
+        "Current Stage": "Current Stage",
+        "Total Tasks": "Total Tasks",
+        "Completed Tasks": "Completed Tasks",
+        "Completion %": "Completion %",
+    }
+    df_disp = df_summary.rename(columns=disp_rename)
+
     st.dataframe(
-        df_summary,
+        df_disp,
         use_container_width=True,
         column_config={
             "Completion %": st.column_config.ProgressColumn(
@@ -377,37 +588,87 @@ if mode == "Summary":
 # VIEW 2: PROJECT TRACKING
 # ==========================================
 elif mode == "Project Tracking":
-    st.title("🔍 Detailed Project Tracking")
+    st.markdown("## 🔍 Detailed Project Tracking")
     if not sorted_projects:
         st.info("No projects created yet.")
         st.stop()
 
-    selected_proj = st.selectbox("Select Project", sorted_projects)
+    selected_proj = st.selectbox("Select Project to Inspect", sorted_projects)
     metrics = calculate_project_metrics(selected_proj)
 
-    st.markdown(f"### Overall Completion: **{metrics['overall_pct']:.1f}%**")
-    st.progress(metrics["overall_pct"] / 100.0)
-    st.markdown("---")
+    # Fetch project details for Header Banner
+    p_row = df_projects[
+        df_projects["Project_Name"].astype(str).str.strip().str.lower()
+        == str(selected_proj).strip().lower()
+    ]
+    p_lead = p_row.iloc[0].get("Project_Lead", "N/A") if not p_row.empty else "N/A"
+    p_cap = p_row.iloc[0].get("Capacity", "N/A") if not p_row.empty else "N/A"
+    p_target = p_row.iloc[0].get("Target_Completion_Date", "N/A") if not p_row.empty else "N/A"
 
+    # Executive Project Header Banner
+    st.markdown(
+        f"""
+        <div class="info-banner">
+            <div class="info-banner-title">⚡ {selected_proj}</div>
+            <div class="info-grid">
+                <div>
+                    <div class="info-item-label">Overall Completion</div>
+                    <div class="info-item-val" style="color: #FFD700; font-size: 1.4rem;">{metrics['overall_pct']:.1f}%</div>
+                </div>
+                <div>
+                    <div class="info-item-label">Current Stage</div>
+                    <div class="info-item-val">{metrics['current_stage']}</div>
+                </div>
+                <div>
+                    <div class="info-item-label">Capacity</div>
+                    <div class="info-item-val">{p_cap}</div>
+                </div>
+                <div>
+                    <div class="info-item-label">Project Lead</div>
+                    <div class="info-item-val">{p_lead}</div>
+                </div>
+                <div>
+                    <div class="info-item-label">Target Completion</div>
+                    <div class="info-item-val">{p_target}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.progress(metrics["overall_pct"] / 100.0)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Render Stages and Milestones
     for stg_name, s_info in metrics["stages"].items():
-        col_t, col_v = st.columns([4, 1])
-        col_t.markdown(f"#### 📌 {stg_name}")
-        col_v.markdown(f"**{s_info['pct']:.1f}% Complete**")
-        st.progress(s_info["pct"] / 100.0)
+        stg_pct = s_info["pct"]
+
+        col_t, col_v = st.columns([3.8, 1.2])
+        col_t.markdown(f"### 📁 {stg_name}")
+        
+        badge_html = (
+            f'<span class="badge-completed">100% COMPLETE</span>'
+            if stg_pct == 100.0
+            else f'<span class="badge-active">{stg_pct:.1f}% COMPLETE</span>'
+        )
+        col_v.markdown(f"<div style='text-align:right; margin-top: 8px;'>{badge_html}</div>", unsafe_allow_html=True)
+        
+        st.progress(stg_pct / 100.0)
 
         for ms_name, m_info in s_info["milestones"].items():
             status = m_info["status"]
             ms_pct = m_info["pct"]
-            custom_tag = " (⚡ Custom Milestone)" if m_info.get("is_custom") else ""
+            custom_tag = " (⚡ Custom)" if m_info.get("is_custom") else ""
 
             if status == "Excluded":
-                expander_title = f"🎯 {ms_name}{custom_tag} — 🚫 Excluded (N/A)"
+                exp_title = f"🎯 {ms_name}{custom_tag} — 🚫 Excluded (N/A)"
             elif status == "Pre-Completed":
-                expander_title = f"🎯 {ms_name}{custom_tag} — ⚡ 100% (Pre-Completed / Overridden)"
+                exp_title = f"🎯 {ms_name}{custom_tag} — ⚡ 100% (Pre-Completed / Overridden)"
             else:
-                expander_title = f"🎯 {ms_name}{custom_tag} — {ms_pct:.0f}% ({m_info['completed_tasks']}/{m_info['total_tasks']} Tasks Completed)"
+                exp_title = f"🎯 {ms_name}{custom_tag} — {ms_pct:.0f}% ({m_info['completed_tasks']}/{m_info['total_tasks']} Tasks Completed)"
 
-            with st.expander(expander_title):
+            with st.expander(exp_title):
                 if status == "Excluded":
                     st.warning(
                         f"**Milestone Excluded.** Reason/Note: {m_info['reason'] or 'Not applicable for this project.'}"
@@ -444,7 +705,8 @@ elif mode == "Project Tracking":
 # VIEW 3: CREATE NEW PROJECT
 # ==========================================
 elif mode == "Create New Project":
-    st.title("➕ Create New Project")
+    st.markdown("## ➕ Create New Project")
+    st.caption("Define new project parameters and set up custom/standard stage milestones.")
 
     if "proj_success" in st.session_state:
         st.success(st.session_state.pop("proj_success"))
@@ -455,31 +717,33 @@ elif mode == "Create New Project":
     next_id = f"P{len(df_projects) + 1:03d}"
 
     st.subheader("1. Project Details")
-    p_name = st.text_input("Project Name")
-    capacity = st.text_input("Capacity (e.g., 50 MWp)")
-    p_lead = st.text_input("Project Lead")
-    target_date = st.date_input("Target Completion Date")
+    c1, c2 = st.columns(2)
+    p_name = c1.text_input("Project Name")
+    capacity = c2.text_input("Capacity (e.g., 50 MWp)")
+
+    c3, c4 = st.columns(2)
+    p_lead = c3.text_input("Project Lead")
+    target_date = c4.date_input("Target Completion Date")
 
     st.markdown("---")
     st.subheader("2. Milestone Configuration (Standard Master Milestones)")
     st.caption("Expand a stage below to configure status for its standard milestones.")
 
     std_cfg_inputs = {}
-    
-    # GROUP BY STAGE HEADER / EXPANDER (Clean & Structured)
+
     for stage_name, stage_group in df_milestones.groupby("Stage_Name", sort=False):
         with st.expander(f"📁 {stage_name}", expanded=True):
             for idx, m_row in stage_group.iterrows():
                 ms = m_row["Milestone_Name"]
 
-                c1, c2, c3 = st.columns([3, 1.5, 2.5])
-                c1.markdown(f"**{ms}**")
-                status_val = c2.selectbox(
+                col_name, col_status, col_reason = st.columns([3, 1.5, 2.5])
+                col_name.markdown(f"**{ms}**")
+                status_val = col_status.selectbox(
                     "Status",
                     ["Active", "Pre-Completed", "Excluded"],
                     key=f"init_st_{idx}",
                 )
-                reason_val = c3.text_input("Notes / Reason", key=f"init_rs_{idx}")
+                reason_val = col_reason.text_input("Notes / Reason", key=f"init_rs_{idx}")
 
                 std_cfg_inputs[ms] = {
                     "stage": stage_name,
@@ -489,8 +753,6 @@ elif mode == "Create New Project":
 
     st.markdown("---")
     st.subheader("3. Add Custom Milestones (Optional)")
-    st.caption("Need a custom milestone specific to this project?")
-
     with st.expander("➕ Add Custom Milestone"):
         c_stage = st.selectbox("Stage for Custom Milestone", df_milestones["Stage_Name"].unique())
         c_name = st.text_input("Custom Milestone Name")
@@ -524,7 +786,6 @@ elif mode == "Create New Project":
             st.warning("Please fill in all required project fields.")
         else:
             try:
-                # Save Project Metadata
                 new_p = pd.DataFrame(
                     [
                         {
@@ -539,7 +800,6 @@ elif mode == "Create New Project":
                 updated_p = pd.concat([df_projects, new_p], ignore_index=True)
                 conn.update(worksheet="Projects", data=updated_p)
 
-                # Collect Standard Config Rows
                 cfg_rows = []
                 for ms_name, ms_data in std_cfg_inputs.items():
                     cfg_rows.append(
@@ -552,7 +812,6 @@ elif mode == "Create New Project":
                         }
                     )
 
-                # Collect Custom Config Rows
                 for c_item in st.session_state["temp_custom_milestones"]:
                     cfg_rows.append(
                         {
@@ -568,7 +827,6 @@ elif mode == "Create New Project":
                 updated_cfg = pd.concat([df_configs, new_cfg_df], ignore_index=True)
                 conn.update(worksheet="Project_Milestone_Config", data=updated_cfg)
 
-                # Clear cache & temporary session state
                 st.cache_data.clear()
                 st.session_state["temp_custom_milestones"] = []
                 st.session_state["proj_success"] = (
@@ -582,7 +840,7 @@ elif mode == "Create New Project":
 # VIEW 4: CONFIGURE PROJECT MILESTONES
 # ==========================================
 elif mode == "Configure Project Milestones":
-    st.title("⚙️ Configure Project Milestone Setup")
+    st.markdown("## ⚙️ Configure Project Milestone Setup")
     if not sorted_projects:
         st.info("No projects available.")
         st.stop()
@@ -595,10 +853,7 @@ elif mode == "Configure Project Milestones":
         == str(proj).strip().lower()
     ]
 
-    # Get master milestones + any existing custom milestones for this project
     stg_ms_master = df_milestones[["Stage_Name", "Milestone_Name"]].drop_duplicates()
-    
-    # Custom milestones already in config for this project
     custom_cfgs = p_configs[
         ~p_configs["Milestone_Name"].astype(str).str.strip().str.lower().isin(
             df_milestones["Milestone_Name"].astype(str).str.strip().str.lower()
@@ -609,8 +864,7 @@ elif mode == "Configure Project Milestones":
 
     with st.form("edit_milestone_config_form"):
         updated_cfgs = {}
-        
-        # GROUP BY STAGE HEADER / EXPANDER (Clean & Structured)
+
         for stage_name, stage_group in all_proj_ms.groupby("Stage_Name", sort=False):
             st.markdown(f"### 📁 {stage_name}")
             for idx, m_row in stage_group.iterrows():
@@ -637,12 +891,12 @@ elif mode == "Configure Project Milestones":
                 is_custom = ms not in df_milestones["Milestone_Name"].values
                 c_tag = " (⚡ Custom)" if is_custom else ""
 
-                c1, c2, c3 = st.columns([3, 1.5, 2.5])
-                c1.markdown(f"**{ms}**{c_tag}")
-                new_st = c2.selectbox(
+                col1, col2, col3 = st.columns([3, 1.5, 2.5])
+                col1.markdown(f"**{ms}**{c_tag}")
+                new_st = col2.selectbox(
                     "Status", status_opts, index=s_idx, key=f"edit_st_{idx}"
                 )
-                new_rs = c3.text_input("Notes / Reason", value=default_reason, key=f"edit_rs_{idx}")
+                new_rs = col3.text_input("Notes / Reason", value=default_reason, key=f"edit_rs_{idx}")
 
                 updated_cfgs[ms] = {"stage": stage_name, "status": new_st, "reason": new_rs}
 
@@ -650,13 +904,11 @@ elif mode == "Configure Project Milestones":
 
         if st.form_submit_button("Save Milestone Configurations"):
             try:
-                # Remove existing configs for project
                 clean_cfg = df_configs[
                     df_configs["Project_Name"].astype(str).str.strip().str.lower()
                     != str(proj).strip().lower()
                 ]
 
-                # Append updated configs
                 rows = [
                     {
                         "Project_Name": proj,
@@ -671,7 +923,6 @@ elif mode == "Configure Project Milestones":
                 updated_df = pd.concat([clean_cfg, pd.DataFrame(rows)], ignore_index=True)
                 conn.update(worksheet="Project_Milestone_Config", data=updated_df)
 
-                # Clear cache
                 st.cache_data.clear()
                 st.success(f"✅ Milestone configuration for **{proj}** updated!")
                 st.rerun()
@@ -705,7 +956,6 @@ elif mode == "Configure Project Milestones":
                     updated_cfg_df = pd.concat([df_configs, new_cfg_row], ignore_index=True)
                     conn.update(worksheet="Project_Milestone_Config", data=updated_cfg_df)
 
-                    # Clear cache
                     st.cache_data.clear()
                     st.success(f"✅ Added custom milestone **{add_ms_name}** to **{proj}**!")
                     st.rerun()
@@ -716,7 +966,7 @@ elif mode == "Configure Project Milestones":
 # VIEW 5: ADD & MANAGE TASK
 # ==========================================
 elif mode == "Add & Manage Task":
-    st.title("⚙️ Task Management")
+    st.markdown("## ⚙️ Task Management")
     if not sorted_projects:
         st.info("No projects available.")
         st.stop()
@@ -724,29 +974,26 @@ elif mode == "Add & Manage Task":
     if "task_success" in st.session_state:
         st.success(st.session_state.pop("task_success"))
 
-    proj = st.selectbox("Project", sorted_projects)
-    stage = st.selectbox("Stage", df_milestones["Stage_Name"].unique())
+    col_p, col_s, col_m = st.columns(3)
+    proj = col_p.selectbox("Project", sorted_projects)
+    stage = col_s.selectbox("Stage", df_milestones["Stage_Name"].unique())
 
-    # Get standard master milestones for stage
     master_ms = df_milestones[
         df_milestones["Stage_Name"].astype(str).str.strip() == str(stage).strip()
     ]["Milestone_Name"].unique().tolist()
 
-    # Get custom milestones for project & stage
     proj_stage_cfgs = df_configs[
         (df_configs["Project_Name"].astype(str).str.strip().str.lower() == str(proj).strip().lower())
         & (df_configs["Stage_Name"].astype(str).str.strip().str.lower() == str(stage).strip().lower())
     ]["Milestone_Name"].unique().tolist()
 
-    # Combine lists
     combined_ms = list(master_ms)
     for m in proj_stage_cfgs:
         if m.lower() not in [x.lower() for x in combined_ms]:
             combined_ms.append(m)
 
-    ms = st.selectbox("Milestone", combined_ms)
+    ms = col_m.selectbox("Milestone", combined_ms)
 
-    # Check status of selected milestone
     curr_ms_cfg = df_configs[
         (df_configs["Project_Name"].astype(str).str.strip().str.lower() == str(proj).strip().lower())
         & (df_configs["Milestone_Name"].astype(str).str.strip().str.lower() == str(ms).strip().lower())
@@ -798,7 +1045,6 @@ elif mode == "Add & Manage Task":
                         updated_t = pd.concat([df_tasks, new_t], ignore_index=True)
                         conn.update(worksheet="Tasks", data=updated_t)
 
-                        # Clear cache
                         st.cache_data.clear()
                         st.session_state["task_success"] = f"✅ Task **{next_id}** created!"
                         st.rerun()
@@ -840,7 +1086,6 @@ elif mode == "Add & Manage Task":
                         df_tasks.loc[t_idx, "Risks_Issues_Remarks"] = n_remarks
                         conn.update(worksheet="Tasks", data=df_tasks)
 
-                        # Clear cache
                         st.cache_data.clear()
                         st.session_state["task_success"] = f"✅ Task **{sel_id}** updated to {n_status}!"
                         st.rerun()

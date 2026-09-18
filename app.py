@@ -11,7 +11,6 @@ st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
 )
 
-# Custom Yellow & Black Theme + Adaptive CSS + Running Widget Fix
 st.markdown(
     """
     <style>
@@ -93,18 +92,20 @@ if not st.session_state["authenticated"]:
     st.stop()
 
 # ==========================================
-# 3. DATA CONNECTION & LOADING
+# 3. DATA CONNECTION & SMART CACHED LOADING
 # ==========================================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 
+@st.cache_data(ttl=10)
 def load_data():
-    df_p = conn.read(worksheet="Projects", ttl=0)
-    df_m = conn.read(worksheet="Milestones_Master", ttl=0)
-    df_t = conn.read(worksheet="Tasks", ttl=0)
+    """Cached loader (ttl=10s) prevents hitting Google Sheets API rate limit (429)."""
+    df_p = conn.read(worksheet="Projects", ttl=10)
+    df_m = conn.read(worksheet="Milestones_Master", ttl=10)
+    df_t = conn.read(worksheet="Tasks", ttl=10)
 
     try:
-        df_cfg = conn.read(worksheet="Project_Milestone_Config", ttl=0)
+        df_cfg = conn.read(worksheet="Project_Milestone_Config", ttl=10)
     except Exception:
         df_cfg = pd.DataFrame(
             columns=[
@@ -129,7 +130,10 @@ def load_data():
 try:
     df_projects, df_milestones, df_tasks, df_configs = load_data()
 except Exception as e:
-    st.error(f"Failed to load data from Google Sheets: {e}")
+    st.error(
+        f"⚠️ Rate limit reached or connection issue with Google Sheets. "
+        f"Please wait a few seconds and refresh. Error: {e}"
+    )
     st.stop()
 
 sorted_projects = (
@@ -556,7 +560,8 @@ elif mode == "Create New Project":
                 updated_cfg = pd.concat([df_configs, new_cfg_df], ignore_index=True)
                 conn.update(worksheet="Project_Milestone_Config", data=updated_cfg)
 
-                # Clear temporary session state
+                # Clear cache & temporary session state
+                st.cache_data.clear()
                 st.session_state["temp_custom_milestones"] = []
                 st.session_state["proj_success"] = (
                     f"✅ Project **{p_name}** (`{next_id}`) created successfully!"
@@ -652,6 +657,9 @@ elif mode == "Configure Project Milestones":
 
                 updated_df = pd.concat([clean_cfg, pd.DataFrame(rows)], ignore_index=True)
                 conn.update(worksheet="Project_Milestone_Config", data=updated_df)
+
+                # Clear cache so fresh configuration is read
+                st.cache_data.clear()
                 st.success(f"✅ Milestone configuration for **{proj}** updated!")
                 st.rerun()
             except Exception as e:
@@ -683,6 +691,9 @@ elif mode == "Configure Project Milestones":
                     )
                     updated_cfg_df = pd.concat([df_configs, new_cfg_row], ignore_index=True)
                     conn.update(worksheet="Project_Milestone_Config", data=updated_cfg_df)
+
+                    # Clear cache
+                    st.cache_data.clear()
                     st.success(f"✅ Added custom milestone **{add_ms_name}** to **{proj}**!")
                     st.rerun()
                 except Exception as err:
@@ -773,6 +784,9 @@ elif mode == "Add & Manage Task":
                         )
                         updated_t = pd.concat([df_tasks, new_t], ignore_index=True)
                         conn.update(worksheet="Tasks", data=updated_t)
+
+                        # Clear cache so fresh tasks are loaded
+                        st.cache_data.clear()
                         st.session_state["task_success"] = f"✅ Task **{next_id}** created!"
                         st.rerun()
                     except Exception as err:
@@ -812,6 +826,9 @@ elif mode == "Add & Manage Task":
                         df_tasks.loc[t_idx, "Status"] = n_status
                         df_tasks.loc[t_idx, "Risks_Issues_Remarks"] = n_remarks
                         conn.update(worksheet="Tasks", data=df_tasks)
+
+                        # Clear cache so updated task status is loaded
+                        st.cache_data.clear()
                         st.session_state["task_success"] = f"✅ Task **{sel_id}** updated to {n_status}!"
                         st.rerun()
                     except Exception as err:

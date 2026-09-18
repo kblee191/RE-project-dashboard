@@ -62,6 +62,12 @@ st.markdown(
     .nav-link.active i, .nav-link-selected i, [class*="nav-link"][class*="active"] i {
         color: #000000 !important;
     }
+    
+    /* Clean Expander Header Styling */
+    .st-expanderHeader {
+        font-weight: bold !important;
+        font-size: 1.05rem !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -456,28 +462,30 @@ elif mode == "Create New Project":
 
     st.markdown("---")
     st.subheader("2. Milestone Configuration (Standard Master Milestones)")
-    st.caption("Set status for standard milestones (Active, Pre-Completed, or Excluded).")
+    st.caption("Expand a stage below to configure status for its standard milestones.")
 
-    # Standard Milestones Form
     std_cfg_inputs = {}
-    for idx, m_row in df_milestones.iterrows():
-        stg = m_row["Stage_Name"]
-        ms = m_row["Milestone_Name"]
+    
+    # GROUP BY STAGE HEADER / EXPANDER (Clean & Structured)
+    for stage_name, stage_group in df_milestones.groupby("Stage_Name", sort=False):
+        with st.expander(f"📁 {stage_name}", expanded=True):
+            for idx, m_row in stage_group.iterrows():
+                ms = m_row["Milestone_Name"]
 
-        c1, c2, c3 = st.columns([2.5, 1.5, 2])
-        c1.markdown(f"**{ms}**<br><small>*{stg}*</small>", unsafe_allow_html=True)
-        status_val = c2.selectbox(
-            "Status",
-            ["Active", "Pre-Completed", "Excluded"],
-            key=f"init_st_{idx}",
-        )
-        reason_val = c3.text_input("Notes / Reason", key=f"init_rs_{idx}")
+                c1, c2, c3 = st.columns([3, 1.5, 2.5])
+                c1.markdown(f"**{ms}**")
+                status_val = c2.selectbox(
+                    "Status",
+                    ["Active", "Pre-Completed", "Excluded"],
+                    key=f"init_st_{idx}",
+                )
+                reason_val = c3.text_input("Notes / Reason", key=f"init_rs_{idx}")
 
-        std_cfg_inputs[ms] = {
-            "stage": stg,
-            "status": status_val,
-            "reason": reason_val,
-        }
+                std_cfg_inputs[ms] = {
+                    "stage": stage_name,
+                    "status": status_val,
+                    "reason": reason_val,
+                }
 
     st.markdown("---")
     st.subheader("3. Add Custom Milestones (Optional)")
@@ -601,39 +609,44 @@ elif mode == "Configure Project Milestones":
 
     with st.form("edit_milestone_config_form"):
         updated_cfgs = {}
-        for idx, m_row in all_proj_ms.iterrows():
-            stg = m_row["Stage_Name"]
-            ms = m_row["Milestone_Name"]
+        
+        # GROUP BY STAGE HEADER / EXPANDER (Clean & Structured)
+        for stage_name, stage_group in all_proj_ms.groupby("Stage_Name", sort=False):
+            st.markdown(f"### 📁 {stage_name}")
+            for idx, m_row in stage_group.iterrows():
+                ms = m_row["Milestone_Name"]
 
-            curr_cfg = p_configs[
-                p_configs["Milestone_Name"].astype(str).str.strip().str.lower()
-                == str(ms).strip().lower()
-            ]
-            default_status = "Active"
-            default_reason = ""
+                curr_cfg = p_configs[
+                    p_configs["Milestone_Name"].astype(str).str.strip().str.lower()
+                    == str(ms).strip().lower()
+                ]
+                default_status = "Active"
+                default_reason = ""
 
-            if not curr_cfg.empty:
-                default_status = curr_cfg.iloc[0].get("Status", "Active")
-                default_reason = curr_cfg.iloc[0].get("Notes_Reason", "")
+                if not curr_cfg.empty:
+                    default_status = curr_cfg.iloc[0].get("Status", "Active")
+                    default_reason = curr_cfg.iloc[0].get("Notes_Reason", "")
 
-            status_opts = ["Active", "Pre-Completed", "Excluded"]
-            s_idx = (
-                status_opts.index(default_status)
-                if default_status in status_opts
-                else 0
-            )
+                status_opts = ["Active", "Pre-Completed", "Excluded"]
+                s_idx = (
+                    status_opts.index(default_status)
+                    if default_status in status_opts
+                    else 0
+                )
 
-            is_custom = ms not in df_milestones["Milestone_Name"].values
-            c_tag = " (⚡ Custom)" if is_custom else ""
+                is_custom = ms not in df_milestones["Milestone_Name"].values
+                c_tag = " (⚡ Custom)" if is_custom else ""
 
-            c1, c2, c3 = st.columns([2.5, 1.5, 2])
-            c1.markdown(f"**{ms}**{c_tag}<br><small>*{stg}*</small>", unsafe_allow_html=True)
-            new_st = c2.selectbox(
-                "Status", status_opts, index=s_idx, key=f"edit_st_{idx}"
-            )
-            new_rs = c3.text_input("Notes / Reason", value=default_reason, key=f"edit_rs_{idx}")
+                c1, c2, c3 = st.columns([3, 1.5, 2.5])
+                c1.markdown(f"**{ms}**{c_tag}")
+                new_st = c2.selectbox(
+                    "Status", status_opts, index=s_idx, key=f"edit_st_{idx}"
+                )
+                new_rs = c3.text_input("Notes / Reason", value=default_reason, key=f"edit_rs_{idx}")
 
-            updated_cfgs[ms] = {"stage": stg, "status": new_st, "reason": new_rs}
+                updated_cfgs[ms] = {"stage": stage_name, "status": new_st, "reason": new_rs}
+
+            st.markdown("---")
 
         if st.form_submit_button("Save Milestone Configurations"):
             try:
@@ -658,7 +671,7 @@ elif mode == "Configure Project Milestones":
                 updated_df = pd.concat([clean_cfg, pd.DataFrame(rows)], ignore_index=True)
                 conn.update(worksheet="Project_Milestone_Config", data=updated_df)
 
-                # Clear cache so fresh configuration is read
+                # Clear cache
                 st.cache_data.clear()
                 st.success(f"✅ Milestone configuration for **{proj}** updated!")
                 st.rerun()
@@ -785,7 +798,7 @@ elif mode == "Add & Manage Task":
                         updated_t = pd.concat([df_tasks, new_t], ignore_index=True)
                         conn.update(worksheet="Tasks", data=updated_t)
 
-                        # Clear cache so fresh tasks are loaded
+                        # Clear cache
                         st.cache_data.clear()
                         st.session_state["task_success"] = f"✅ Task **{next_id}** created!"
                         st.rerun()
@@ -827,7 +840,7 @@ elif mode == "Add & Manage Task":
                         df_tasks.loc[t_idx, "Risks_Issues_Remarks"] = n_remarks
                         conn.update(worksheet="Tasks", data=df_tasks)
 
-                        # Clear cache so updated task status is loaded
+                        # Clear cache
                         st.cache_data.clear()
                         st.session_state["task_success"] = f"✅ Task **{sel_id}** updated to {n_status}!"
                         st.rerun()

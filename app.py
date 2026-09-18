@@ -2,14 +2,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
-from streamlit_option_menu import option_menu
 
 # Page Setup
 st.set_page_config(
     page_title="Renewable Energy Dashboard", page_icon="⚡", layout="wide"
 )
 
-# Custom Yellow & Black Theme + Adaptive CSS + Padding Fix
+# Custom Yellow & Black Theme + Adaptive CSS + Native Radio Styling
 st.markdown(
     """
     <style>
@@ -37,8 +36,25 @@ st.markdown(
     }
     [data-testid="stMetricValue"] { color: #FFD700 !important; }
     .stProgress > div > div > div > div { background-color: #FFD700 !important; }
-    .nav-link.active i, .nav-link-selected i, [class*="nav-link"][class*="active"] i {
-        color: #000000 !important;
+    
+    /* Native Sidebar Radio Navigation Styling */
+    div[data-testid="stSidebar"] div.stRadio > div {
+        gap: 6px;
+    }
+    div[data-testid="stSidebar"] div.stRadio label {
+        background-color: rgba(255, 255, 255, 0.05);
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+        transition: all 0.2s ease;
+    }
+    div[data-testid="stSidebar"] div.stRadio label:hover {
+        background-color: rgba(255, 215, 0, 0.2) !important;
+    }
+    div[data-testid="stSidebar"] div.stRadio [data-checked="true"] + div {
+        font-weight: bold !important;
     }
     </style>
     """,
@@ -71,8 +87,8 @@ if not st.session_state["authenticated"]:
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 
-@st.cache_data(ttl=2)
 def load_data():
+    """Reads live Google Sheets data directly with ttl=0 to bypass stale caches."""
     df_p = conn.read(worksheet="Projects", ttl=0)
     df_m = conn.read(worksheet="Milestones_Master", ttl=0)
     df_t = conn.read(worksheet="Tasks", ttl=0)
@@ -89,7 +105,7 @@ def load_data():
             ]
         )
 
-    # Convert all columns (including Booleans) to sanitized string values
+    # Convert all columns and entries into clean string types
     for df in [df_p, df_m, df_t, df_o]:
         if df is not None and not df.empty:
             df.columns = [str(col).strip() for col in df.columns]
@@ -107,35 +123,38 @@ except Exception as e:
 
 
 def is_milestone_overridden(p_name, ms_name):
-    """Robust helper to check if a milestone is overridden for a project."""
+    """Normalized check to match project and milestone override entries cleanly."""
     if df_overrides is None or df_overrides.empty:
         return False, ""
 
-    target_p = str(p_name).strip().lower()
-    target_ms = str(ms_name).strip().lower()
+    # Strip out all whitespace and lowercase for exact character-level matching
+    target_p = "".join(str(p_name).split()).lower()
+    target_ms = "".join(str(ms_name).split()).lower()
 
     for _, row in df_overrides.iterrows():
-        row_p = ""
-        row_ms = ""
-        row_override = ""
-        row_reason = ""
+        p_val = ""
+        ms_val = ""
+        override_val = ""
+        reason_val = ""
 
         for col in df_overrides.columns:
-            col_clean = str(col).lower().replace(" ", "").replace("_", "")
+            c_norm = str(col).lower().replace("_", "").replace(" ", "")
             val = str(row[col]).strip()
+            if "project" in c_norm:
+                p_val = val
+            elif "milestone" in c_norm:
+                ms_val = val
+            elif "override" in c_norm and "reason" not in c_norm:
+                override_val = val
+            elif "reason" in c_norm:
+                reason_val = val
 
-            if "project" in col_clean:
-                row_p = val.lower()
-            elif "milestone" in col_clean:
-                row_ms = val.lower()
-            elif "override" in col_clean and "reason" not in col_clean:
-                row_override = val.upper()
-            elif "reason" in col_clean:
-                row_reason = val
+        norm_p = "".join(p_val.split()).lower()
+        norm_ms = "".join(ms_val.split()).lower()
 
-        if row_p == target_p and row_ms == target_ms:
-            if row_override in ["TRUE", "1", "YES", "T"]:
-                return True, row_reason if row_reason else "No reason provided"
+        if norm_p == target_p and norm_ms == target_ms:
+            if override_val.upper() in ["TRUE", "1", "YES", "T"]:
+                return True, reason_val if reason_val else "No reason provided"
 
     return False, ""
 
@@ -150,9 +169,9 @@ sorted_project_dropdown = (
 with st.sidebar:
     st.markdown(
         """
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 48px; line-height: 1;">⚡</span>
-            <div style="font-size: 24px; font-weight: 900; line-height: 1.15;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <span style="font-size: 44px; line-height: 1;">⚡</span>
+            <div style="font-size: 22px; font-weight: 900; line-height: 1.15;">
                 RE Project Dashboard
             </div>
         </div>
@@ -161,40 +180,19 @@ with st.sidebar:
     )
     st.markdown("---")
 
-    mode = option_menu(
-        menu_title="Navigation",
+    mode = st.radio(
+        "Navigation",
         options=[
-            "Summary",
-            "Project Tracking",
-            "Create New Project",
-            "Add & Manage Task",
+            "📊 Summary",
+            "🔍 Project Tracking",
+            "➕ Create New Project",
+            "⚙️ Add & Manage Task",
         ],
-        icons=["speedometer2", "search", "plus-circle", "check2-square"],
-        menu_icon="compass",
-        default_index=0,
-        styles={
-            "container": {
-                "padding": "0!important",
-                "background-color": "transparent",
-            },
-            "icon": {"font-size": "18px"},
-            "nav-link": {
-                "font-size": "14px",
-                "text-align": "left",
-                "margin": "4px 0px",
-                "--hover-color": "rgba(128, 128, 128, 0.15)",
-            },
-            "nav-link-selected": {
-                "background-color": "#FFD700",
-                "color": "#000000",
-                "font-weight": "bold",
-            },
-        },
+        index=0,
     )
 
-    if st.button("🔄 Sync Google Sheets"):
-        st.cache_data.clear()
-        st.rerun()
+    # Clean text mode for conditional routing
+    nav_mode = mode.split(" ", 1)[1] if " " in mode else mode
 
     st.markdown('<div class="sidebar-spacer"></div>', unsafe_allow_html=True)
     st.markdown("---")
@@ -204,7 +202,7 @@ with st.sidebar:
         st.rerun()
 
 # Summary View
-if mode == "Summary":
+if nav_mode == "Summary":
     st.title("📃 Portfolio Overview")
 
     if "Stage_Order" in df_milestones.columns:
@@ -340,7 +338,7 @@ if mode == "Summary":
     )
 
 # Project Tracking View
-elif mode == "Project Tracking":
+elif nav_mode == "Project Tracking":
     st.title("🔍 Project Progress Tracking")
     selected_proj = st.selectbox("Select Project", sorted_project_dropdown)
 
@@ -479,7 +477,7 @@ elif mode == "Project Tracking":
         st.markdown("---")
 
 # Create New Project View
-elif mode == "Create New Project":
+elif nav_mode == "Create New Project":
     st.title("➕ Create New Project")
 
     if "project_success_msg" in st.session_state:
@@ -520,8 +518,6 @@ elif mode == "Create New Project":
 
                     conn.update(worksheet="Projects", data=updated_projects)
 
-                    st.cache_data.clear()
-
                     st.session_state["project_success_msg"] = (
                         f"✅ Project **{proj_name}** (`{next_project_id}`) has been created successfully!"
                     )
@@ -531,7 +527,7 @@ elif mode == "Create New Project":
                     st.error(f"Error updating Projects sheet: {err}")
 
 # Add & Manage Task View
-elif mode == "Add & Manage Task":
+elif nav_mode == "Add & Manage Task":
     st.title("⚙️ Task Management")
 
     if "task_success_msg" in st.session_state:
@@ -597,8 +593,6 @@ elif mode == "Add & Manage Task":
                             [df_tasks, new_row], ignore_index=True
                         )
                         conn.update(worksheet="Tasks", data=updated_tasks)
-
-                        st.cache_data.clear()
 
                         st.session_state["task_success_msg"] = (
                             f"✅ Task **{next_id}** has been successfully created and assigned to **{assigned}**!"
@@ -671,8 +665,6 @@ elif mode == "Add & Manage Task":
                         )
 
                         conn.update(worksheet="Tasks", data=df_tasks)
-
-                        st.cache_data.clear()
 
                         st.session_state["task_success_msg"] = (
                             f"✅ Task **{selected_task_id}** updated to **{new_status}**!"
@@ -752,8 +744,6 @@ elif mode == "Add & Manage Task":
                     conn.update(
                         worksheet="Milestone_Overrides", data=df_o_clean
                     )
-
-                    st.cache_data.clear()
 
                     st.session_state["task_success_msg"] = (
                         f"✅ Milestone **{ms}** override updated successfully!"
